@@ -5,6 +5,7 @@ import { useEntity } from '../auth';
 import EntityForm from '../components/EntityForm';
 import { useRefs } from '../components/useRefs';
 import { downloadCsv, fmtDate, money } from '../format';
+import { compareValues, defaultSort, SortSpec, sortKind } from '../sort';
 import { Doc, FieldDef } from '../types';
 
 interface Props {
@@ -32,7 +33,7 @@ export default function EntityPage(props: Props) {
   const [err, setErr] = useState('');
   const [q, setQ] = useState('');
   const [filters, setFilters] = useState<Record<string, string>>({});
-  const [sort, setSort] = useState<{ key: string; dir: 1 | -1 } | null>(null);
+  const [sort, setSort] = useState<SortSpec | null>(null);
   const [editing, setEditing] = useState<Partial<Doc> | null>(null);
   const [quickOn, setQuickOn] = useState(false);
   const [search, setSearch] = useSearchParams();
@@ -61,16 +62,19 @@ export default function EntityPage(props: Props) {
     let r = (tab ? items.filter(tab.test) : items).filter((d) => Object.entries(filters).every(([k, v]) => !v || d[k] === v));
     if (quickOn && props.quickFilter) r = r.filter(props.quickFilter.test);
     if (needle) r = r.filter((d) => cols.some((f) => display(f, d).toLowerCase().includes(needle)) || String(d.notes ?? '').toLowerCase().includes(needle));
-    if (sort) {
-      const f = cols.find((c) => c.name === sort.key)!;
-      r = [...r].sort((a, b) => {
-        const av = a[sort.key], bv = b[sort.key];
-        const cmp = f.type === 'money' || f.type === 'number' ? Number(av ?? 0) - Number(bv ?? 0) : display(f, a).localeCompare(display(f, b));
-        return cmp * sort.dir;
-      });
+    const s = sort ?? defaultSort(cols);
+    const f = s && cols.find((c) => c.name === s.key);
+    if (s && f) {
+      const kind = sortKind(f);
+      // Text columns compare what the user sees (e.g. ref labels); dates/numbers compare raw values.
+      const text = kind === 'text' ? (d: Doc) => display(f, d) : null;
+      r = [...r].sort((a, b) =>
+        (text ? compareValues('text', text(a), text(b), s.dir) : compareValues(kind, a[s.key], b[s.key], s.dir))
+        || compareValues('date', a.createdAt, b.createdAt, -1));
     }
     return r;
   }, [items, filters, q, sort, cols, display, quickOn, props.quickFilter, tab]);
+  const activeSort = sort ?? defaultSort(cols);
 
   if (!def) return <p className="muted">Not available.</p>;
 
@@ -134,8 +138,8 @@ export default function EntityPage(props: Props) {
           <thead>
             <tr>
               {cols.map((c) => (
-                <th key={c.name} onClick={() => setSort((s) => ({ key: c.name, dir: s?.key === c.name && s.dir === 1 ? -1 : 1 }))}>
-                  {c.label}{sort?.key === c.name ? (sort.dir === 1 ? ' ▲' : ' ▼') : ''}
+                <th key={c.name} onClick={() => setSort({ key: c.name, dir: activeSort?.key === c.name && activeSort.dir === 1 ? -1 : 1 })}>
+                  {c.label}{activeSort?.key === c.name ? (activeSort.dir === 1 ? ' ▲' : ' ▼') : ''}
                 </th>
               ))}
               <th />
