@@ -1,4 +1,5 @@
 import { CATEGORIES } from '../schema';
+import { aiCategorize, AiCategory } from './openai';
 
 type Category = (typeof CATEGORIES)[number];
 
@@ -29,6 +30,12 @@ export function categorize(text: string, vendorDefault?: string | null): Categor
   if (vendorDefault && (CATEGORIES as readonly string[]).includes(vendorDefault)) return vendorDefault as Category;
   for (const [cat, re] of RULES) if (re.test(text)) return cat;
   return 'Miscellaneous';
+}
+
+/** Rules first (free, deterministic); only when nothing matched, ask the small Azure OpenAI model (if configured). */
+export async function categorizeWithAi(text: string, vendorDefault?: string | null): Promise<AiCategory> {
+  const category = categorize(text, vendorDefault);
+  return category !== 'Miscellaneous' ? { category } : aiCategorize(text);
 }
 
 export const normalizeName = (s: string) => s.toLowerCase().replace(/\b(m\/s|pvt|private|ltd|limited|llp|co|company|&|and)\b/g, '').replace(/[^a-z0-9]/g, '');

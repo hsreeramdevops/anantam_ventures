@@ -1,6 +1,6 @@
 import { app } from '@azure/functions';
 import { analyzeInvoice, docIntelConfigured, ParsedBill } from '../ai/docintel';
-import { categorize, normalizeName } from '../ai/categorize';
+import { categorizeWithAi, normalizeName } from '../ai/categorize';
 import { newBlobName, saveFile } from '../files/blob';
 import { HttpError, json, route } from '../http';
 import { canWrite, createEntity, findVendorByName } from '../service';
@@ -28,7 +28,7 @@ app.http('billUpload', {
     }
 
     const vendor = parsed.vendorName ? await findVendorByName(parsed.vendorName) : null;
-    const category = categorize(parsed.itemsText || name, (vendor?.category as string) ?? null);
+    const { category, phase } = await categorizeWithAi(parsed.itemsText || name, (vendor?.category as string) ?? null);
 
     let duplicateOf: string | null = null;
     if (parsed.billNumber && parsed.vendorName) {
@@ -48,6 +48,7 @@ app.http('billUpload', {
       tax: parsed.tax ?? null,
       total: parsed.total ?? 0,
       category,
+      phase: phase ?? null,
       status: 'Unpaid',
       file: blobName,
       needsReview: true,

@@ -95,6 +95,17 @@ resource docintel 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
   properties: { customSubDomainName: '${prefix}-docintel-${suffix}', publicNetworkAccess: 'Enabled' }
 }
 
+// ---------- Azure OpenAI (pay-per-token, fallback bill categoriser; cents / month) ----------
+module openai 'openai.bicep' = {
+  name: 'openai'
+  params: { name: '${prefix}-openai-${suffix}', tags: tags }
+}
+
+resource openaiAccount 'Microsoft.CognitiveServices/accounts@2024-10-01' existing = {
+  name: '${prefix}-openai-${suffix}'
+  dependsOn: [ openai ]
+}
+
 // ---------- Email OTP via Azure Communication Services (Azure-managed domain, ~$0.00025 / mail) ----------
 resource emailSvc 'Microsoft.Communication/emailServices@2023-04-01' = {
   name: '${prefix}-email-${suffix}'
@@ -138,6 +149,9 @@ resource swaSettings 'Microsoft.Web/staticSites/config@2023-12-01' = {
     STORAGE_CONTAINER: files.name
     DOCINTEL_ENDPOINT: docintel.properties.endpoint
     DOCINTEL_KEY: docintel.listKeys().key1
+    AZURE_OPENAI_ENDPOINT: openai.outputs.endpoint
+    AZURE_OPENAI_KEY: openaiAccount.listKeys().key1
+    AZURE_OPENAI_DEPLOYMENT: openai.outputs.deploymentName
     ACS_CONNECTION_STRING: acs.listKeys().primaryConnectionString
     EMAIL_SENDER: 'DoNotReply@${emailDomain.properties.mailFromSenderDomain}'
     BOOTSTRAP_ADMIN_EMAIL: bootstrapAdminEmail

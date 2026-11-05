@@ -8,7 +8,7 @@ customer payment schedules, follow-ups, site progress and photos, materials, lab
 | Area | What you get |
 |---|---|
 | **Login** | Username **or** email → 6-digit code emailed (10 min, single use, 5 attempts, 3 sends / 15 min). HttpOnly session cookie (12 h). |
-| **Bills & expenses** | Upload PDF/photo → **Azure AI Document Intelligence** reads vendor, bill #, dates, subtotal, GST, total → auto category (vendor default → keyword rules) → bill created as *Needs review*. Duplicate detection. Paid / Partially paid / Unpaid tracking, payment mode, "Mark paid". Vendors learn their default category. |
+| **Bills & expenses** | Upload PDF/photo → **Azure AI Document Intelligence** reads vendor, bill #, dates, subtotal, GST, total → auto category (vendor default → keyword rules → **Azure OpenAI gpt-4.1-mini** fallback only when no rule matches; also suggests a phase) → bill created as *Needs review*. Duplicate detection. Paid / Partially paid / Unpaid tracking, payment mode, "Mark paid". Vendors learn their default category. |
 | **Vendors & contractors** | Contact, GSTIN, bank/UPI, default category. |
 | **Budgets** | Budget per category / phase; dashboard shows budget vs actual with overruns highlighted. |
 | **Flats & bookings** | Unit inventory (block, floor, type, area, price, status). Booking auto-sets flat to Booked / Sold / Available. |
@@ -30,6 +30,7 @@ flowchart LR
   SWA --> C[(Cosmos DB<br/>free tier)]
   SWA --> B[(Blob Storage<br/>bills/photos/docs)]
   SWA --> DI[Document Intelligence F0<br/>bill reading]
+  SWA -.->|only if no keyword rule matches| AOAI[Azure OpenAI gpt-4.1-mini<br/>category fallback]
   SWA --> ACS[Communication Services<br/>Email OTP + digest]
   GH[GitHub Actions cron] -->|daily digest| SWA
 ```
@@ -47,12 +48,15 @@ flowchart LR
 | Blob Storage | Standard LRS, private | < $0.10 for a few GB |
 | Document Intelligence | F0 (500 pages / month free, first 2 pages per bill) | $0 |
 | Communication Services Email | Pay-per-use (~$0.00025 / email) | < $0.05 |
+| Azure OpenAI (gpt-4.1-mini, South India, GlobalStandard 10K TPM) | Pay-per-token, S0 has no fixed fee; only called when keyword rules don't match (~600 tokens ≈ $0.0003 / call) | < $0.50 (≈ ₹40) even at 1,000 such bills |
 | GitHub Actions (CI, deploy, cron) | Public repo | $0 |
 
 Guard-rails: subscription budget ($20 default) with 50/80/100 % and forecast alerts, Cosmos throughput cap,
 `deploy.sh` refuses to run against any subscription other than `240b9dac-…` or to create a second (paid) Cosmos account,
 and the Visual Studio subscription's spending limit stops all charges at the $150 credit.
 **If you exceed 500 bill pages/month**, Document Intelligence F0 returns errors (no charge); bills are still saved for manual entry.
+The OpenAI fallback is fail-safe: if `AZURE_OPENAI_*` settings are missing, the call errors or takes over 10 s, or the answer
+isn't a known category, the bill is simply categorised *Miscellaneous*. The 10K tokens/min capacity also limits worst-case spend.
 
 ## Local development
 
@@ -63,7 +67,7 @@ cd ../web && npm install && npm run dev                        # http://localhos
 ```
 
 Without Azure settings the API runs fully offline: data in `api/.data/db.json`, files in `api/.data/files`,
-emails (including OTP codes) written to `api/.data/dev-mail.log`, AI parsing skipped.
+emails (including OTP codes) written to `api/.data/dev-mail.log`, AI parsing and the OpenAI category fallback skipped.
 
 Tests: `cd api && npm test`.
 
@@ -76,3 +80,7 @@ ADMIN_EMAIL=you@example.com ./infra/deploy.sh
 
 Then add the three repo secrets it prints (`AZURE_STATIC_WEB_APPS_API_TOKEN`, `APP_URL`, `JOB_KEY`) and push to `main`.
 Sign in with `ADMIN_EMAIL`, then add other users under **Admin → Users**.
+
+`deploy.sh` is safe to rerun: it reuses the existing `JWT_SECRET` / `JOB_KEY` from the Static Web App instead of regenerating them.
+To add only the OpenAI fallback to an existing deployment, deploy `infra/openai.bicep` and merge its three
+`AZURE_OPENAI_*` settings with `az staticwebapp appsettings set` (that command merges settings, it doesn't replace them).

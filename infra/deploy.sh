@@ -14,7 +14,7 @@ az account set --subscription "$SUBSCRIPTION"
 [ "$(az account show --query id -o tsv)" = "$SUBSCRIPTION" ] || { echo "Wrong subscription"; exit 1; }
 
 # Cosmos free tier is limited to one account per subscription.
-if az cosmosdb list --query "[?enableFreeTier].name" -o tsv | grep -q .; then
+if az cosmosdb list --query "[?enableFreeTier && resourceGroup!='$RG'].name" -o tsv | grep -q .; then
   echo "A free-tier Cosmos account already exists in this subscription; refusing to create a paid one."; exit 1
 fi
 
@@ -22,9 +22,20 @@ az deployment sub create -n anantam-budget -l "$LOCATION" -f budget.bicep \
   -p amount="$BUDGET" contactEmails="[\"$ADMIN_EMAIL\"]" startDate="$(date -u +%Y-%m-01)" -o none
 
 az group create -n "$RG" -l "$LOCATION" --tags app=anantam-ventures -o none
+
+# Reuse existing secrets on reruns: regenerating JWT_SECRET logs everyone out and a new JOB_KEY breaks the GitHub secret.
+EXISTING_SWA=$(az staticwebapp list -g "$RG" --query "[0].name" -o tsv 2>/dev/null || true)
+JWT_SECRET="" JOB_KEY=""
+if [ -n "$EXISTING_SWA" ]; then
+  JWT_SECRET=$(az staticwebapp appsettings list -n "$EXISTING_SWA" -g "$RG" --query properties.JWT_SECRET -o tsv 2>/dev/null || true)
+  JOB_KEY=$(az staticwebapp appsettings list -n "$EXISTING_SWA" -g "$RG" --query properties.JOB_KEY -o tsv 2>/dev/null || true)
+fi
+JWT_SECRET=${JWT_SECRET:-$(openssl rand -hex 32)}
+JOB_KEY=${JOB_KEY:-$(openssl rand -hex 24)}
+
 az deployment group create -g "$RG" -n anantam -f main.bicep \
   -p location="$LOCATION" bootstrapAdminEmail="$ADMIN_EMAIL" \
-     jwtSecret="$(openssl rand -hex 32)" jobKey="$(openssl rand -hex 24)" \
+     jwtSecret="$JWT_SECRET" jobKey="$JOB_KEY" \
   --query properties.outputs -o json
 
 SWA=$(az staticwebapp list -g "$RG" --query "[0].name" -o tsv)

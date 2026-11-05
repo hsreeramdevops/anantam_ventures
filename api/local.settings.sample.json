@@ -6,6 +6,9 @@
     "BOOTSTRAP_ADMIN_EMAIL": "you@example.com",
     "JWT_SECRET": "change-me-to-a-long-random-string",
     "JOB_KEY": "change-me-too",
-    "COOKIE_SECURE": "false"
+    "COOKIE_SECURE": "false",
+    "AZURE_OPENAI_ENDPOINT": "",
+    "AZURE_OPENAI_KEY": "",
+    "AZURE_OPENAI_DEPLOYMENT": ""
   }
 }
