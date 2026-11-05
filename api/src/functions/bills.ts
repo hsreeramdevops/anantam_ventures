@@ -3,9 +3,10 @@ import { analyzeInvoice, docIntelConfigured, ParsedBill } from '../ai/docintel';
 import { categorizeWithAi, normalizeName } from '../ai/categorize';
 import { SessionUser } from '../auth/session';
 import { newBlobName, saveFile } from '../files/blob';
-import { HttpError, json, route } from '../http';
+import { HttpError, json, readJson, route } from '../http';
 import { requireProject } from '../projects';
-import { canWrite, createEntity, findVendorByName, listEntities } from '../service';
+import { PAY_MODES, ValidationError } from '../schema';
+import { canWrite, createEntity, findVendorByName, getEntity, listEntities, updateEntity } from '../service';
 import { readUpload, Upload } from './files';
 
 /**
@@ -68,5 +69,44 @@ app.http('billUpload', {
     const project = await requireProject(req, user!);
     const { bill, parseError, vendor, parsed } = await processBillUpload(ctx, user!, project.id, await readUpload(req));
     return json({ bill, parseError, vendorMatched: !!vendor, suggestedVendor: !vendor ? parsed.vendorName ?? null : null, vendorGstin: parsed.vendorGstin ?? null }, 201);
+  }),
+});
+
+const r2 = (v: number) => Math.round(v * 100) / 100;
+
+/**
+ * Records a (possibly partial) payment against a bill: adds to `paidAmount`, sets status to Paid once the
+ * total is covered (else Partially Paid) and appends to the bill's `payments` history.
+ */
+export function applyPayment(bill: Record<string, unknown>, input: Record<string, unknown>, by: string) {
+  const total = Number(bill.total ?? 0);
+  const paidSoFar = Number(bill.paidAmount ?? 0);
+  const outstanding = r2(total - paidSoFar);
+  if (!(total > 0)) throw new ValidationError('Set the bill total before recording a payment');
+  if (bill.status === 'Paid' || outstanding <= 0) throw new ValidationError('This bill is already fully paid');
+  const amount = input.amount === undefined || input.amount === null || input.amount === '' ? outstanding : r2(Number(input.amount));
+  if (!Number.isFinite(amount) || amount <= 0) throw new ValidationError('Amount must be more than 0');
+  if (amount > outstanding + 0.005) throw new ValidationError(`Amount is more than the balance due (${outstanding})`);
+  const date = String(input.date ?? '') || new Date().toISOString().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new ValidationError('Paid date must be YYYY-MM-DD');
+  const mode = input.mode ? String(input.mode) : null;
+  if (mode && !(PAY_MODES as readonly string[]).includes(mode)) throw new ValidationError('Invalid payment mode');
+  const note = input.note ? String(input.note).slice(0, 300) : null;
+  const paidAmount = r2(paidSoFar + amount);
+  const history = Array.isArray(bill.payments) ? bill.payments : [];
+  return {
+    changes: { paidAmount, paidDate: date, paymentMode: mode, status: paidAmount >= total - 0.005 ? 'Paid' : 'Partially Paid' },
+    extra: { payments: [...history, { amount, date, mode, note, by, at: new Date().toISOString() }] },
+  };
+}
+
+app.http('billPayment', {
+  methods: ['POST'], authLevel: 'anonymous', route: 'bills/{id}/payment',
+  handler: route(async (req, _ctx, user) => {
+    if (!canWrite(user!, 'bill')) throw new HttpError(403, 'Not allowed');
+    const project = await requireProject(req, user!);
+    const bill = await getEntity('bill', req.params.id ?? '', project.id);
+    const { changes, extra } = applyPayment(bill, await readJson(req), user!.username);
+    return json(await updateEntity(user!, 'bill', bill.id, changes, project.id, extra));
   }),
 });

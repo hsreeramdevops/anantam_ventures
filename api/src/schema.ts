@@ -40,7 +40,7 @@ export const PHASES = [
   'Land & Approvals', 'Foundation', 'Structure', 'Masonry', 'MEP', 'Finishing', 'Handover', 'General',
 ] as const;
 
-const PAY_MODES = ['Cash', 'UPI', 'Bank Transfer', 'Cheque', 'Card'] as const;
+export const PAY_MODES = ['Cash', 'UPI', 'Bank Transfer', 'Cheque', 'Card'] as const;
 const ALL: Role[] = [...ROLES];
 const FIN: Role[] = ['admin', 'accountant'];
 const SITE: Role[] = ['admin', 'engineer'];

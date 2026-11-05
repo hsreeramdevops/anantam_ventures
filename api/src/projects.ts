@@ -70,22 +70,30 @@ export async function getAccessibleProject(user: SessionUser, id: string | null 
 export const requireProject = (req: HttpRequest, user: SessionUser) =>
   getAccessibleProject(user, req.query.get('project'));
 
-/** Strips admin-only fields (share token, members) for non-admins. */
+/** Strips admin-only fields (share tokens, members) for non-admins. */
 export function publicProjectView(p: Doc, user: SessionUser): Doc {
   if (user.role === 'admin') return p;
-  const { shareToken: _t, shareEnabled: _e, members: _m, ...rest } = p;
+  const { shareToken: _t, shareEnabled: _e, payToken: _pt, payEnabled: _pe, members: _m, ...rest } = p;
   return rest as Doc;
 }
 
-/** Constant-time lookup of an enabled project by its share token. */
-export async function findProjectByShareToken(token: string): Promise<Doc | null> {
+/** The two public links a project can have: guest bill upload (/u/) and payment request (/pay/). */
+export type ShareLinkKind = 'upload' | 'pay';
+export const SHARE_FIELDS: Record<ShareLinkKind, { token: string; enabled: string }> = {
+  upload: { token: 'shareToken', enabled: 'shareEnabled' },
+  pay: { token: 'payToken', enabled: 'payEnabled' },
+};
+
+/** Constant-time lookup of an enabled project by one of its share tokens. */
+export async function findProjectByShareToken(token: string, kind: ShareLinkKind = 'upload'): Promise<Doc | null> {
+  const f = SHARE_FIELDS[kind];
   if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) return null;
   await ensureMigrated();
   const want = Buffer.from(token);
   let found: Doc | null = null;
   for (const p of await getStore().list('project')) {
-    const have = Buffer.from(String(p.shareToken ?? ''));
-    if (have.length === want.length && crypto.timingSafeEqual(have, want) && p.shareEnabled === true) found = p;
+    const have = Buffer.from(String(p[f.token] ?? ''));
+    if (have.length === want.length && crypto.timingSafeEqual(have, want) && p[f.enabled] === true) found = p;
   }
   return found;
 }

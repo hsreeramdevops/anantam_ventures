@@ -40,9 +40,11 @@ export default function Dashboard() {
   if (!d) return <p className="muted">Loading…</p>;
   const t = d.totals;
   const kpis: [string, string, string?, boolean?][] = [
-    ['Total spend', money(t.spend), '/bills'],
-    ['Unpaid bills', money(t.unpaidBills), '/bills', t.unpaidBills > 0],
-    ['Overdue bills', String(t.overdueBills), '/bills', t.overdueBills > 0],
+    ['Total spend', money(t.spend), '/bills?tab=all'],
+    [`Unpaid (${t.unpaidCount ?? 0})`, money(t.unpaidBills), '/bills?tab=unpaid', t.unpaidBills > 0],
+    [`Paid (${t.paidCount ?? 0})`, money(t.paidBills ?? 0), '/bills?tab=paid'],
+    ['Payment requests to pay', String(t.payRequests ?? 0), '/bills?tab=unpaid', (t.payRequests ?? 0) > 0],
+    ['Overdue bills', String(t.overdueBills), '/bills?tab=unpaid', t.overdueBills > 0],
     ['Bills to review', String(t.billsToReview), '/bills', t.billsToReview > 0],
     ['Customer receivable', money(t.receivable), '/e/customerPayment'],
     ['Received from customers', money(t.received), '/e/customerPayment'],

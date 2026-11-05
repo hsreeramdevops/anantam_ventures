@@ -3,6 +3,7 @@ import { api } from '../api';
 import { useEntity } from '../auth';
 import { money } from '../format';
 import { Doc } from '../types';
+import PayDialog, { outstanding, payToOf } from '../components/PayDialog';
 import EntityPage from './EntityPage';
 
 interface UploadResult {
@@ -14,6 +15,16 @@ interface UploadResult {
 }
 
 const NEEDS_REVIEW = { label: 'Needs review', test: (d: Doc) => d.needsReview === true };
+// Unpaid includes Partially Paid: anything with a balance still to pay.
+const TABS = [
+  { key: 'unpaid', label: 'Unpaid', test: (d: Doc) => d.status !== 'Paid' },
+  { key: 'paid', label: 'Paid', test: (d: Doc) => d.status === 'Paid' },
+  { key: 'all', label: 'All', test: () => true },
+];
+const sum = (items: Doc[], f: (d: Doc) => number) => items.reduce((s, d) => s + f(d), 0);
+const tabSummary = (items: Doc[], key: string) => key === 'unpaid'
+  ? `${items.length} · ${money(sum(items, outstanding))} due`
+  : `${items.length} · ${money(sum(items, (d) => Number(d.total ?? 0)))}`;
 
 export default function BillsPage() {
   const def = useEntity('bill');
@@ -23,6 +34,7 @@ export default function BillsPage() {
   const [result, setResult] = useState<UploadResult | null>(null);
   const [err, setErr] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
+  const [paying, setPaying] = useState<Doc | null>(null);
 
   async function upload(files: FileList | null, openEdit: (d: Doc) => void) {
     if (!files?.length) return;
@@ -81,10 +93,22 @@ export default function BillsPage() {
         reloadKey={reloadKey}
         defaults={{ status: 'Unpaid', category: 'Miscellaneous' }}
         quickFilter={NEEDS_REVIEW}
-        badge={(d) => d.source === 'guest' && (
-          <span className="pill guest" title={`Guest upload by ${String(d.submitterName ?? '')}${d.submitterPhone ? ` (${String(d.submitterPhone)})` : ''}${d.remarks ? `: ${String(d.remarks)}` : ''}`}>
-            Guest: {String(d.submitterName ?? '')}
-          </span>
+        tabs={TABS}
+        tabSummary={tabSummary}
+        badge={(d) => (
+          <>
+            {d.source === 'guest' && (
+              <span className="pill guest" title={`Guest upload by ${String(d.submitterName ?? '')}${d.submitterPhone ? ` (${String(d.submitterPhone)})` : ''}${d.remarks ? `: ${String(d.remarks)}` : ''}`}>
+                Guest: {String(d.submitterName ?? '')}
+              </span>
+            )}
+            {d.source === 'payment-request' && (
+              <span className="pill payreq" title={`Payment request${d.submitterName ? ` by ${String(d.submitterName)}` : ''}${d.remarks ? `: ${String(d.remarks)}` : ''}`}>
+                Pay request
+              </span>
+            )}
+            {d.status === 'Partially Paid' && <span className="pill partially-paid balance">Balance {money(outstanding(d))}</span>}
+          </>
         )}
         toolbar={(_reload, openEdit) => def?.canWrite && (
           <>
@@ -93,22 +117,24 @@ export default function BillsPage() {
             <button className="btn accent" disabled={busy} onClick={() => input.current?.click()}>⬆ Upload bill (AI)</button>
           </>
         )}
-        rowActions={(d, reload) => def?.canWrite && (
+        rowActions={(d, reload) => (
           <>
-            {d.needsReview === true && (
+            {payToOf(d) && !(def?.canWrite && d.status !== 'Paid') && (
+              <button className="btn small" onClick={() => setPaying(d)}>Pay details</button>
+            )}
+            {def?.canWrite && d.needsReview === true && (
               <button className="btn small" onClick={async () => { await api.update('bill', d.id, { needsReview: false }); reload(); }}>Mark reviewed</button>
             )}
-            {d.status !== 'Paid' && (
-              <button className="btn small ok" onClick={async () => {
-                const mode = prompt('Payment mode (Cash, UPI, Bank Transfer, Cheque, Card)', 'Bank Transfer');
-                if (mode === null) return;
-                try { await api.update('bill', d.id, { status: 'Paid', paidAmount: d.total, paymentMode: mode || null }); reload(); }
-                catch (x: any) { alert(x.message); }
-              }}>Mark paid</button>
+            {def?.canWrite && d.status !== 'Paid' && Number(d.total ?? 0) > 0 && (
+              <button className="btn small ok" onClick={() => setPaying(d)}>{payToOf(d) ? 'Pay / mark paid' : 'Mark paid'}</button>
             )}
           </>
         )}
       />
+      {paying && (
+        <PayDialog bill={paying} canRecord={!!def?.canWrite} onClose={() => setPaying(null)}
+          onSaved={() => { setPaying(null); setReloadKey((k) => k + 1); }} />
+      )}
     </>
   );
 }

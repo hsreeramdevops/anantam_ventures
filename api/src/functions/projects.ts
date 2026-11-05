@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { app } from '@azure/functions';
 import { SessionUser } from '../auth/session';
 import { HttpError, json, readJson, route } from '../http';
-import { getAccessibleProject, listAccessibleProjects, newShareToken, publicProjectView } from '../projects';
+import { getAccessibleProject, listAccessibleProjects, newShareToken, publicProjectView, SHARE_FIELDS, ShareLinkKind } from '../projects';
 import { PROJECT_DEF, validate, ValidationError } from '../schema';
 import { audit } from '../service';
 import { getStore } from '../store';
@@ -32,7 +32,7 @@ app.http('projectCollection', {
     const now = new Date().toISOString();
     const doc = await getStore().put({
       ...validate(PROJECT_DEF, { status: 'Active', ...input }), members: (await readMembers(input)) ?? [],
-      shareToken: newShareToken(), shareEnabled: true,
+      shareToken: newShareToken(), shareEnabled: true, payToken: newShareToken(), payEnabled: true,
       id: crypto.randomUUID(), type: 'project', createdAt: now, createdBy: user!.username,
     });
     await audit(user!, 'create', 'project', doc.id, `Project ${doc.name}`, doc.id);
@@ -57,20 +57,28 @@ app.http('projectItem', {
   }),
 });
 
-/** Guest link management: `regenerate` (old link dies immediately), `disable`, `enable`. */
+/**
+ * Public link management for `link` = `upload` (guest bill upload, default) or `pay` (payment request):
+ * `regenerate` (old link dies immediately), `disable`, `enable`. Projects created before payment
+ * requests have no pay token until an admin regenerates it.
+ */
 app.http('projectShare', {
   methods: ['POST'], authLevel: 'anonymous', route: 'projects/{id}/share',
   handler: route(async (req, _ctx, user) => {
     requireAdmin(user!);
     const prev = await getAccessibleProject(user!, req.params.id);
-    const { action } = await readJson(req);
+    const body = await readJson(req);
+    const action = body.action;
+    const link = String(body.link ?? 'upload') as ShareLinkKind;
+    if (!Object.hasOwn(SHARE_FIELDS, link)) throw new HttpError(400, 'link must be upload or pay');
+    const f = SHARE_FIELDS[link];
     const patch: Record<string, unknown> =
-      action === 'regenerate' ? { shareToken: newShareToken(), shareEnabled: true }
-        : action === 'disable' ? { shareEnabled: false }
-          : action === 'enable' ? { shareEnabled: true } : {};
+      action === 'regenerate' ? { [f.token]: newShareToken(), [f.enabled]: true }
+        : action === 'disable' ? { [f.enabled]: false }
+          : action === 'enable' && prev[f.token] ? { [f.enabled]: true } : {};
     if (!Object.keys(patch).length) throw new HttpError(400, 'action must be regenerate, disable or enable');
     const doc = await getStore().put({ ...prev, ...patch, updatedAt: new Date().toISOString(), updatedBy: user!.username });
-    await audit(user!, 'update', 'project', doc.id, `Project ${doc.name}: guest link ${action}d`, doc.id);
+    await audit(user!, 'update', 'project', doc.id, `Project ${doc.name}: ${link === 'pay' ? 'payment request' : 'guest upload'} link ${action}d`, doc.id);
     return json(doc);
   }),
 });

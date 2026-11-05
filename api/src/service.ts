@@ -143,13 +143,16 @@ export async function createEntity(user: SessionUser, type: string, input: Recor
   return doc;
 }
 
-export async function updateEntity(user: SessionUser, type: string, id: string, input: Record<string, unknown>, projectId: string | null = null) {
+export async function updateEntity(
+  user: SessionUser, type: string, id: string, input: Record<string, unknown>, projectId: string | null = null,
+  extra: Record<string, unknown> = {},
+) {
   const def = entityDef(type);
   if (!def || !canWrite(user, type)) throw new HttpError(403, 'Not allowed');
   const store = getStore();
   const prev = scopeCheck(type, await store.get(type, id), projectId);
   const changes = validate(def, input, true);
-  let doc: Doc = { ...prev, ...changes, id, type, updatedAt: new Date().toISOString(), updatedBy: user.username };
+  let doc: Doc = { ...prev, ...changes, ...extra, id, type, updatedAt: new Date().toISOString(), updatedBy: user.username };
   doc = await beforeSave(doc, prev);
   await store.put(doc);
   await afterSave(doc, prev, user);

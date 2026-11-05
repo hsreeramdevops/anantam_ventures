@@ -116,3 +116,20 @@ label.row input[type=checkbox] { width: auto; }
 .pill.active { background: #e3f5ea; color: var(--ok); } .pill.on-hold { background: #fdf3e1; color: var(--warn); } .pill.completed { background: #e8eef6; color: var(--primary); }
 .pill.guest { background: #efe7fb; color: #6b3fb5; margin-left: 6px; }
 .guest form { margin-top: 12px; }
+
+/* Bills: Unpaid / Paid / All tabs, payment details */
+.tabs { display: flex; gap: 6px; margin: 4px 0 10px; border-bottom: 1px solid #e3e8ef; overflow-x: auto; }
+.tab { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 14px; border: 0; border-bottom: 3px solid transparent; background: none; cursor: pointer; font: inherit; white-space: nowrap; }
+.tab.active { border-bottom-color: var(--primary); font-weight: 600; }
+.pill.payreq { background: #e1f1fb; color: #1769aa; margin-left: 6px; }
+.pill.balance { margin-left: 6px; }
+.modal.narrow { width: min(520px, 100%); }
+.grid2.tight { gap: 8px; }
+.pay-to { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid #e3e8ef; border-radius: 8px; margin: 8px 0; background: #fafbfd; }
+.copy-row { display: grid; grid-template-columns: 110px 1fr auto; align-items: center; gap: 8px; }
+.copy-row code { word-break: break-all; font-size: .95rem; }
+.qr-img { max-width: 260px; width: 100%; border: 1px solid #e3e8ef; border-radius: 8px; background: #fff; }
+.mode-choice { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 4px 0 10px; }
+.mode-choice label { display: flex; align-items: center; gap: 8px; padding: 12px; border: 1px solid #d6dde7; border-radius: 8px; cursor: pointer; font-size: 1rem; }
+.mode-choice label:has(input:checked) { border-color: var(--primary); background: #eef4fb; }
+.pay-form input, .pay-form textarea, .pay-form select { font-size: 16px; }

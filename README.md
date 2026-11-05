@@ -9,8 +9,9 @@ customer payment schedules, follow-ups, site progress and photos, materials, lab
 |---|---|
 | **Projects** | Run several sites at once. After login you pick a project (admins see **+ New project**); a switcher in the header changes project. Every record, report, CSV export and file belongs to one project; the daily digest groups items by project. Admins see all projects, other users only those they're a member of (enforced in the API on every read, write and file download). |
 | **Guest bill upload link** | Each project has a public, unguessable link (`/u/<token>`, 192-bit) where anyone — site staff, suppliers — can submit a bill (PDF/photo, max 10 MB) with **remarks**, their name and phone, **without an account**. It lands in that project as *Needs review* (with a **Guest** badge) and goes through the same AI reading/categorisation. Admins copy, disable or regenerate the link from **Projects** (a new link kills the old one immediately). Abuse limits: 5 uploads / 10 min per IP, 20 / hour per link, magic-byte file check; bad and disabled links look identical. |
+| **Raise a payment request link** | A second per-project public link (`/pay/<token>`, separate token) for pay requests that used to arrive on WhatsApp. Mobile-first form: payee name, amount ₹, purpose, mode of payment — **UPI** (mobile number or UPI ID), **QR code** (image upload), **Bank account** (holder, account # entered twice, IFSC, bank) or **Cash** — and optional requester name/phone. Formats are validated (10-digit mobile / UPI ID, IFSC, 9–18 digit account). It becomes an **Unpaid** bill (*Needs review*, **Pay request** badge, auto category) with the payee's details; team members open **Pay details** to copy UPI/account/IFSC, view the QR or open a UPI app. Same rate limits and copy / disable / new-link controls as the guest upload link. |
 | **Login** | Username **or** email → 6-digit code emailed (10 min, single use, 5 attempts, 3 sends / 15 min). HttpOnly session cookie (12 h). |
-| **Bills & expenses** | **Needs review** filter with count. Upload PDF/photo → **Azure AI Document Intelligence** reads vendor, bill #, dates, subtotal, GST, total → auto category (vendor default → keyword rules → **Azure OpenAI gpt-4.1-mini** fallback only when no rule matches; also suggests a phase) → bill created as *Needs review*. Duplicate detection. Paid / Partially paid / Unpaid tracking, payment mode, "Mark paid". Vendors learn their default category. |
+| **Bills & expenses** | **Needs review** filter with count. Upload PDF/photo → **Azure AI Document Intelligence** reads vendor, bill #, dates, subtotal, GST, total → auto category (vendor default → keyword rules → **Azure OpenAI gpt-4.1-mini** fallback only when no rule matches; also suggests a phase) → bill created as *Needs review*. Duplicate detection. **Unpaid / Paid / All tabs** (default Unpaid, which includes Partially Paid) with count and ₹ total/balance due; **Mark paid** records amount, date, mode and reference, supports **partial payments** (balance shown) and keeps a payment history. Dashboard shows Unpaid vs Paid and pending payment requests. Vendors learn their default category. |
 | **Vendors & contractors** | Contact, GSTIN, bank/UPI, default category. |
 | **Budgets** | Budget per category / phase; dashboard shows budget vs actual with overruns highlighted. |
 | **Flats & bookings** | Unit inventory (block, floor, type, area, price, status). Booking auto-sets flat to Booked / Sold / Available. |
@@ -46,6 +47,7 @@ flowchart LR
   On first start after the upgrade, existing data is moved into a **Default project** (idempotent; existing non-admin users become members).
   Same Cosmos container and partition key (`/type`) — no extra cost.
 - **Guest upload:** `GET /api/public/projects/{token}` and `POST /api/public/upload/{token}` (no login, `api/src/functions/guest.ts`);
+- **Payment requests:** `GET`/`POST /api/public/pay/{token}` (no login, `api/src/functions/payrequest.ts`); payments are recorded with `POST /api/bills/{id}/payment`;
   rate-limit counters are short-lived Cosmos docs with TTL.
 
 ## Cost (target ≈ $0–2 / month, hard ceiling $150)
@@ -66,7 +68,7 @@ and the Visual Studio subscription's spending limit stops all charges at the $15
 **If you exceed 500 bill pages/month**, Document Intelligence F0 returns errors (no charge); bills are still saved for manual entry.
 The OpenAI fallback is fail-safe: if `AZURE_OPENAI_*` settings are missing, the call errors or takes over 10 s, or the answer
 isn't a known category, the bill is simply categorised *Miscellaneous*. The 10K tokens/min capacity also limits worst-case spend.
-The public guest link is rate-limited (per IP and per link) so it can't burn the Document Intelligence free quota or OpenAI tokens;
+The public guest and payment-request links are rate-limited (per IP and per link) so it can't burn the Document Intelligence free quota or OpenAI tokens;
 an admin can disable or regenerate a leaked link instantly.
 
 ## Local development

@@ -6,6 +6,12 @@ import { useProject } from '../project';
 import { Doc, Project } from '../types';
 
 export const guestLink = (p: Project) => `${window.location.origin}/u/${p.shareToken}`;
+export const payLink = (p: Project) => `${window.location.origin}/pay/${p.payToken}`;
+
+const LINKS = {
+  upload: { title: 'Guest bill upload link', url: guestLink, token: (p: Project) => p.shareToken, on: (p: Project) => !!p.shareEnabled },
+  pay: { title: 'Raise a payment request link', url: payLink, token: (p: Project) => p.payToken, on: (p: Project) => !!p.payEnabled && !!p.payToken },
+};
 
 /** Project list + picker. Admins can create/edit projects, manage members and the guest upload link. */
 export default function Projects() {
@@ -34,7 +40,8 @@ export default function Projects() {
             </div>
             {p.location && <div className="muted small">{p.location}</div>}
             {p.startDate && <div className="muted small">Started {fmtDate(p.startDate)}</div>}
-            {canManage && <ShareLink project={p} onChange={reload} />}
+            {canManage && <ShareLink project={p} kind="upload" onChange={reload} />}
+            {canManage && <ShareLink project={p} kind="pay" onChange={reload} />}
             <div className="row wrap">
               <button className="btn primary small" onClick={() => open(p)}>{current?.id === p.id ? 'Current project' : 'Open'}</button>
               {canManage && <button className="btn small" onClick={() => setEditing(p)}>Edit / members</button>}
@@ -48,25 +55,28 @@ export default function Projects() {
   );
 }
 
-function ShareLink({ project, onChange }: { project: Project; onChange: () => void }) {
+function ShareLink({ project, kind, onChange }: { project: Project; kind: keyof typeof LINKS; onChange: () => void }) {
   const [msg, setMsg] = useState('');
+  const l = LINKS[kind];
+  const on = l.on(project);
+  const hasToken = !!l.token(project);
   const act = async (action: 'regenerate' | 'disable' | 'enable') => {
-    if (action === 'regenerate' && !confirm('Create a new link? The current link will stop working immediately.')) return;
-    try { await api.post(`/api/projects/${project.id}/share`, { action }); setMsg(''); onChange(); } catch (x: any) { setMsg(x.message); }
+    if (action === 'regenerate' && hasToken && !confirm('Create a new link? The current link will stop working immediately.')) return;
+    try { await api.post(`/api/projects/${project.id}/share`, { action, link: kind }); setMsg(''); onChange(); } catch (x: any) { setMsg(x.message); }
   };
   const copy = async () => {
-    try { await navigator.clipboard.writeText(guestLink(project)); setMsg('Link copied'); } catch { setMsg(guestLink(project)); }
+    try { await navigator.clipboard.writeText(l.url(project)); setMsg('Link copied'); } catch { setMsg(l.url(project)); }
   };
   return (
     <div className="share-box">
-      <div className="small"><b>Guest bill upload link</b> {project.shareEnabled ? <span className="pill paid">On</span> : <span className="pill unpaid">Off</span>}</div>
-      {project.shareEnabled && <input className="share-url" readOnly value={guestLink(project)} onFocus={(e) => e.target.select()} />}
+      <div className="small"><b>{l.title}</b> {on ? <span className="pill paid">On</span> : <span className="pill unpaid">Off</span>}</div>
+      {on && <input className="share-url" readOnly value={l.url(project)} onFocus={(e) => e.target.select()} />}
       <div className="row wrap">
-        {project.shareEnabled && <button className="btn small" onClick={copy}>Copy link</button>}
-        <button className="btn small" onClick={() => act('regenerate')}>New link</button>
-        {project.shareEnabled
+        {on && <button className="btn small" onClick={copy}>Copy link</button>}
+        <button className="btn small" onClick={() => act('regenerate')}>{hasToken ? 'New link' : 'Create link'}</button>
+        {hasToken && (on
           ? <button className="btn small danger" onClick={() => act('disable')}>Disable</button>
-          : <button className="btn small ok" onClick={() => act('enable')}>Enable</button>}
+          : <button className="btn small ok" onClick={() => act('enable')}>Enable</button>)}
       </div>
       {msg && <div className="muted small">{msg}</div>}
     </div>

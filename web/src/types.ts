@@ -47,4 +47,6 @@ export interface Project {
   members?: string[];
   shareToken?: string;
   shareEnabled?: boolean;
+  payToken?: string;
+  payEnabled?: boolean;
 }

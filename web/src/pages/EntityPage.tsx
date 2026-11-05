@@ -1,5 +1,5 @@
 import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { api, fileUrl } from '../api';
 import { useEntity } from '../auth';
 import EntityForm from '../components/EntityForm';
@@ -17,6 +17,10 @@ interface Props {
   quickFilter?: { label: string; test: (d: Doc) => boolean };
   /** Extra marker rendered after the first column's value (e.g. a "Guest" pill). */
   badge?: (d: Doc) => ReactNode;
+  /** Top-level tabs (e.g. Unpaid / Paid / All); the first is the default, `?tab=<key>` selects one. */
+  tabs?: { key: string; label: string; test: (d: Doc) => boolean }[];
+  /** Summary shown inside each tab button for the records in that tab (e.g. count and total). */
+  tabSummary?: (items: Doc[], tabKey: string) => ReactNode;
 }
 
 export default function EntityPage(props: Props) {
@@ -31,6 +35,8 @@ export default function EntityPage(props: Props) {
   const [sort, setSort] = useState<{ key: string; dir: 1 | -1 } | null>(null);
   const [editing, setEditing] = useState<Partial<Doc> | null>(null);
   const [quickOn, setQuickOn] = useState(false);
+  const [search, setSearch] = useSearchParams();
+  const tab = props.tabs?.find((t) => t.key === search.get('tab')) ?? props.tabs?.[0];
 
   const load = useCallback(async () => {
     try { setItems((await api.list(type)).items); setErr(''); } catch (x: any) { setErr(x.message); }
@@ -52,7 +58,7 @@ export default function EntityPage(props: Props) {
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    let r = items.filter((d) => Object.entries(filters).every(([k, v]) => !v || d[k] === v));
+    let r = (tab ? items.filter(tab.test) : items).filter((d) => Object.entries(filters).every(([k, v]) => !v || d[k] === v));
     if (quickOn && props.quickFilter) r = r.filter(props.quickFilter.test);
     if (needle) r = r.filter((d) => cols.some((f) => display(f, d).toLowerCase().includes(needle)) || String(d.notes ?? '').toLowerCase().includes(needle));
     if (sort) {
@@ -64,7 +70,7 @@ export default function EntityPage(props: Props) {
       });
     }
     return r;
-  }, [items, filters, q, sort, cols, display, quickOn, props.quickFilter]);
+  }, [items, filters, q, sort, cols, display, quickOn, props.quickFilter, tab]);
 
   if (!def) return <p className="muted">Not available.</p>;
 
@@ -89,6 +95,20 @@ export default function EntityPage(props: Props) {
         </div>
       </div>
 
+      {props.tabs && (
+        <div className="tabs" role="tablist">
+          {props.tabs.map((t) => {
+            const inTab = items.filter(t.test);
+            return (
+              <button key={t.key} role="tab" aria-selected={tab?.key === t.key} className={`tab ${tab?.key === t.key ? 'active' : ''}`}
+                onClick={() => setSearch((sp) => { sp.set('tab', t.key); return sp; }, { replace: true })}>
+                <span>{t.label}</span>
+                <span className="muted small">{props.tabSummary ? props.tabSummary(inTab, t.key) : inTab.length}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div className="row wrap filters">
         <input className="search" placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} />
         {filterable.map((f) => (
@@ -99,10 +119,10 @@ export default function EntityPage(props: Props) {
         ))}
         {props.quickFilter && (
           <button className={`btn small ${quickOn ? 'primary' : ''}`} onClick={() => setQuickOn((o) => !o)}>
-            {props.quickFilter.label} <span className="pill unpaid">{items.filter(props.quickFilter.test).length}</span>
+            {props.quickFilter.label} <span className="pill unpaid">{(tab ? items.filter(tab.test) : items).filter(props.quickFilter.test).length}</span>
           </button>
         )}
-        <span className="muted small">{rows.length} of {items.length}</span>
+        <span className="muted small">{rows.length} of {tab ? items.filter(tab.test).length : items.length}</span>
         {moneyCols.length > 0 && (
           <span className="small">{moneyCols.map((c) => `${c.label}: ${money(rows.reduce((s, d) => s + Number(d[c.name] ?? 0), 0))}`).join(' · ')}</span>
         )}

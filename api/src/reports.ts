@@ -46,7 +46,7 @@ export function dashboard(data: Record<string, Doc[]>, today = isoDate(new Date(
   const spendByCategory: Record<string, number> = {};
   const spendByPhase: Record<string, number> = {};
   const spendByMonth: Record<string, number> = {};
-  let totalSpend = 0, unpaid = 0, overdueBills = 0;
+  let totalSpend = 0, unpaid = 0, overdueBills = 0, paid = 0, unpaidCount = 0, paidCount = 0, payRequests = 0;
   const dueSoon: Doc[] = [];
   for (const b of bill) {
     const t = n(b.total);
@@ -55,9 +55,14 @@ export function dashboard(data: Record<string, Doc[]>, today = isoDate(new Date(
     spendByPhase[String(b.phase ?? 'General')] = (spendByPhase[String(b.phase ?? 'General')] ?? 0) + t;
     const m = String(b.billDate ?? b.createdAt ?? '').slice(0, 7);
     if (m) spendByMonth[m] = (spendByMonth[m] ?? 0) + t;
+    // Paid bills count in full even if paidAmount was never filled in (e.g. imported history).
+    paid += b.status === 'Paid' ? t : Math.min(t, n(b.paidAmount));
+    if (b.status === 'Paid') paidCount++;
     if (b.status !== 'Paid') {
       const outstanding = t - n(b.paidAmount);
       unpaid += outstanding;
+      unpaidCount++;
+      if (b.source === 'payment-request') payRequests++;
       if (b.dueDate && String(b.dueDate) < today) overdueBills++;
       if (b.dueDate && String(b.dueDate) <= soon) dueSoon.push({ ...b, outstanding: r2(outstanding) });
     }
@@ -92,7 +97,7 @@ export function dashboard(data: Record<string, Doc[]>, today = isoDate(new Date(
   return {
     today,
     totals: {
-      spend: r2(totalSpend), unpaidBills: r2(unpaid), overdueBills, receivable: r2(receivable), received: r2(received),
+      spend: r2(totalSpend), unpaidBills: r2(unpaid), overdueBills, paidBills: r2(paid), unpaidCount, paidCount, payRequests, receivable: r2(receivable), received: r2(received),
       overdueReceivables, openTasks: openTasks.length, overdueTasks: openTasks.filter((t) => t.dueDate && String(t.dueDate) < today).length,
       progress, wagesThisMonth: r2(wages.reduce((s, w) => s + w.gross, 0)), billsToReview: bill.filter((b) => b.needsReview).length,
     },

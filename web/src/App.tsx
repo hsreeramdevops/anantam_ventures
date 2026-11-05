@@ -3,6 +3,7 @@ import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'reac
 import { useAuth } from './auth';
 import { useProject } from './project';
 import GuestUpload from './pages/GuestUpload';
+import PaymentRequest from './pages/PaymentRequest';
 import Projects from './pages/Projects';
 import BillsPage from './pages/BillsPage';
 import Dashboard from './pages/Dashboard';
@@ -24,6 +25,7 @@ export default function App() {
 
   // Public guest upload page: no login, nothing else reachable.
   if (loc.pathname.startsWith('/u/')) return <Routes><Route path="/u/:token" element={<GuestUpload />} /></Routes>;
+  if (loc.pathname.startsWith('/pay/')) return <Routes><Route path="/pay/:token" element={<PaymentRequest />} /></Routes>;
   if (loading) return <div className="center muted">Loading…</div>;
   if (!user) return <Login />;
   if (projectsLoading) return <div className="center muted">Loading projects…</div>;
