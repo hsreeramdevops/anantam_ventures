@@ -94,13 +94,13 @@ describe('OTP login', () => {
 
 describe('service rules', () => {
   it('derives bill payment status', async () => {
-    const b = await createEntity(admin, 'bill', { total: 1000, category: 'Cement' });
+    const b = await createEntity(admin, 'bill', { total: 1000, category: 'Cement' }, {}, 'p1');
     expect(b.status).toBe('Unpaid');
-    const p = await updateEntity(admin, 'bill', b.id, { paidAmount: 400 });
+    const p = await updateEntity(admin, 'bill', b.id, { paidAmount: 400 }, 'p1');
     expect(p.status).toBe('Partially Paid');
-    const f = await updateEntity(admin, 'bill', b.id, { status: 'Paid', paidAmount: null });
+    const f = await updateEntity(admin, 'bill', b.id, { status: 'Paid', paidAmount: null }, 'p1');
     expect(f).toMatchObject({ status: 'Paid', paidAmount: 1000 });
-    const u = await updateEntity(admin, 'bill', b.id, { status: 'Unpaid' });
+    const u = await updateEntity(admin, 'bill', b.id, { status: 'Unpaid' }, 'p1');
     expect(u).toMatchObject({ status: 'Unpaid', paidAmount: 0 });
   });
   it('enforces roles', async () => {
@@ -108,10 +108,10 @@ describe('service rules', () => {
   });
   it('booking flips flat status', async () => {
     const { getStore } = await import('../src/store');
-    const flat = await createEntity(admin, 'flat', { number: '101', status: 'Available' });
-    const bk = await createEntity(admin, 'booking', { flatId: flat.id, customerName: 'Ravi', agreedPrice: 5000000 });
+    const flat = await createEntity(admin, 'flat', { number: '101', status: 'Available' }, {}, 'p1');
+    const bk = await createEntity(admin, 'booking', { flatId: flat.id, customerName: 'Ravi', agreedPrice: 5000000 }, {}, 'p1');
     expect((await getStore().get('flat', flat.id))!.status).toBe('Booked');
-    await deleteEntity(admin, 'booking', bk.id);
+    await deleteEntity(admin, 'booking', bk.id, 'p1');
     expect((await getStore().get('flat', flat.id))!.status).toBe('Available');
   });
   it('protects last admin and unique usernames', async () => {

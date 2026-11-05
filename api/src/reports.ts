@@ -1,3 +1,4 @@
+import { isProjectScoped } from './schema';
 import { Doc, getStore } from './store';
 
 const n = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
@@ -106,9 +107,13 @@ export function dashboard(data: Record<string, Doc[]>, today = isoDate(new Date(
   };
 }
 
-export async function loadAll(types: string[]) {
+/** Loads every doc of `types`; with `projectId`, only that project's docs (global types are unfiltered). */
+export async function loadAll(types: string[], projectId?: string) {
   const store = getStore();
-  const entries = await Promise.all(types.map(async (t) => [t, await store.list(t)] as const));
+  const entries = await Promise.all(types.map(async (t) => {
+    const docs = await store.list(t);
+    return [t, projectId && isProjectScoped(t) ? docs.filter((d) => d.projectId === projectId) : docs] as const;
+  }));
   return Object.fromEntries(entries) as Record<string, Doc[]>;
 }
 

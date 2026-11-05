@@ -4,7 +4,18 @@ export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 
-async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
+let currentProject: string | null = null;
+/** The selected project is sent as `?project=` on every project-scoped API call. */
+export const setApiProject = (id: string | null) => { currentProject = id; };
+
+const SCOPED = /^\/api\/(entities|reports|bills|files)(\/|\?|$)/;
+function withProject(url: string) {
+  if (!currentProject || !SCOPED.test(url) || /^\/api\/files\//.test(url)) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}project=${encodeURIComponent(currentProject)}`;
+}
+
+async function request<T>(method: string, rawUrl: string, body?: unknown): Promise<T> {
+  const url = withProject(rawUrl);
   const isForm = body instanceof FormData;
   const res = await fetch(url, {
     method,

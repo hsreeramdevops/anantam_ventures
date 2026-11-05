@@ -1,9 +1,39 @@
 {
+  "routes": [
+    {
+      "route": "/u/*",
+      "rewrite": "/index.html",
+      "allowedRoles": [
+        "anonymous"
+      ],
+      "headers": {
+        "Referrer-Policy": "no-referrer",
+        "Cache-Control": "no-store",
+        "X-Robots-Tag": "noindex, nofollow"
+      }
+    },
+    {
+      "route": "/api/public/*",
+      "allowedRoles": [
+        "anonymous"
+      ],
+      "headers": {
+        "Referrer-Policy": "no-referrer",
+        "Cache-Control": "no-store",
+        "X-Robots-Tag": "noindex, nofollow"
+      }
+    }
+  ],
   "navigationFallback": {
     "rewrite": "/index.html",
-    "exclude": ["/api/*", "/assets/*"]
+    "exclude": [
+      "/api/*",
+      "/assets/*"
+    ]
   },
-  "platform": { "apiRuntime": "node:20" },
+  "platform": {
+    "apiRuntime": "node:20"
+  },
   "globalHeaders": {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",

@@ -36,3 +36,15 @@ export interface User {
   email: string;
   role: Role;
 }
+
+export interface Project {
+  id: string;
+  name: string;
+  location?: string | null;
+  status?: string;
+  startDate?: string | null;
+  notes?: string | null;
+  members?: string[];
+  shareToken?: string;
+  shareEnabled?: boolean;
+}

@@ -13,6 +13,10 @@ interface Props {
   rowActions?: (d: Doc, reload: () => void) => ReactNode;
   defaults?: Record<string, unknown>;
   reloadKey?: number;
+  /** Toggle filter shown as a button with a count badge (e.g. "Needs review"). */
+  quickFilter?: { label: string; test: (d: Doc) => boolean };
+  /** Extra marker rendered after the first column's value (e.g. a "Guest" pill). */
+  badge?: (d: Doc) => ReactNode;
 }
 
 export default function EntityPage(props: Props) {
@@ -26,6 +30,7 @@ export default function EntityPage(props: Props) {
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [sort, setSort] = useState<{ key: string; dir: 1 | -1 } | null>(null);
   const [editing, setEditing] = useState<Partial<Doc> | null>(null);
+  const [quickOn, setQuickOn] = useState(false);
 
   const load = useCallback(async () => {
     try { setItems((await api.list(type)).items); setErr(''); } catch (x: any) { setErr(x.message); }
@@ -48,6 +53,7 @@ export default function EntityPage(props: Props) {
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
     let r = items.filter((d) => Object.entries(filters).every(([k, v]) => !v || d[k] === v));
+    if (quickOn && props.quickFilter) r = r.filter(props.quickFilter.test);
     if (needle) r = r.filter((d) => cols.some((f) => display(f, d).toLowerCase().includes(needle)) || String(d.notes ?? '').toLowerCase().includes(needle));
     if (sort) {
       const f = cols.find((c) => c.name === sort.key)!;
@@ -58,7 +64,7 @@ export default function EntityPage(props: Props) {
       });
     }
     return r;
-  }, [items, filters, q, sort, cols, display]);
+  }, [items, filters, q, sort, cols, display, quickOn, props.quickFilter]);
 
   if (!def) return <p className="muted">Not available.</p>;
 
@@ -91,6 +97,11 @@ export default function EntityPage(props: Props) {
             {f.options!.map((o) => <option key={o}>{o}</option>)}
           </select>
         ))}
+        {props.quickFilter && (
+          <button className={`btn small ${quickOn ? 'primary' : ''}`} onClick={() => setQuickOn((o) => !o)}>
+            {props.quickFilter.label} <span className="pill unpaid">{items.filter(props.quickFilter.test).length}</span>
+          </button>
+        )}
         <span className="muted small">{rows.length} of {items.length}</span>
         {moneyCols.length > 0 && (
           <span className="small">{moneyCols.map((c) => `${c.label}: ${money(rows.reduce((s, d) => s + Number(d[c.name] ?? 0), 0))}`).join(' · ')}</span>
@@ -113,7 +124,7 @@ export default function EntityPage(props: Props) {
           <tbody>
             {rows.map((d) => (
               <tr key={d.id}>
-                {cols.map((c) => (
+                {cols.map((c, i) => (
                   <td key={c.name} className={c.type === 'money' ? 'num' : ''}>
                     {c.type === 'file' && d[c.name] ? (
                       def.type === 'sitePhoto'
@@ -121,6 +132,7 @@ export default function EntityPage(props: Props) {
                         : <a href={fileUrl(String(d[c.name]))} target="_blank" rel="noreferrer">View</a>
                     ) : c.name === 'status' ? <span className={`pill ${String(d.status ?? '').replace(/\s/g, '-').toLowerCase()}`}>{display(c, d)}</span>
                       : display(c, d)}
+                    {i === 0 && props.badge?.(d)}
                   </td>
                 ))}
                 <td className="actions">

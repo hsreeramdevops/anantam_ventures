@@ -13,6 +13,8 @@ interface UploadResult {
   vendorGstin: string | null;
 }
 
+const NEEDS_REVIEW = { label: 'Needs review', test: (d: Doc) => d.needsReview === true };
+
 export default function BillsPage() {
   const def = useEntity('bill');
   const vendorDef = useEntity('vendor');
@@ -78,6 +80,12 @@ export default function BillsPage() {
         type="bill"
         reloadKey={reloadKey}
         defaults={{ status: 'Unpaid', category: 'Miscellaneous' }}
+        quickFilter={NEEDS_REVIEW}
+        badge={(d) => d.source === 'guest' && (
+          <span className="pill guest" title={`Guest upload by ${String(d.submitterName ?? '')}${d.submitterPhone ? ` (${String(d.submitterPhone)})` : ''}${d.remarks ? `: ${String(d.remarks)}` : ''}`}>
+            Guest: {String(d.submitterName ?? '')}
+          </span>
+        )}
         toolbar={(_reload, openEdit) => def?.canWrite && (
           <>
             <input ref={input} type="file" hidden multiple accept="application/pdf,image/jpeg,image/png,image/webp"

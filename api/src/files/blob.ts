@@ -7,8 +7,11 @@ import { config } from '../config';
 export const FOLDERS = ['bills', 'photos', 'documents'] as const;
 export type Folder = (typeof FOLDERS)[number];
 
-const NAME_RE = /^(bills|photos|documents)\/\d{4}\/\d{2}\/[0-9a-f-]{36}-[A-Za-z0-9._-]{1,100}$/;
+/** `p/<projectId>/` prefix on files uploaded since multi-project; older names have none (default project). */
+const NAME_RE = /^(?:p\/([a-z0-9-]{1,40})\/)?(bills|photos|documents)\/\d{4}\/\d{2}\/[0-9a-f-]{36}-[A-Za-z0-9._-]{1,100}$/;
 export const isValidBlobName = (n: string) => NAME_RE.test(n);
+/** Project that owns a blob: its prefix, or null for legacy (pre-project) names. */
+export const blobProjectId = (n: string): string | null => NAME_RE.exec(n)?.[1] ?? null;
 
 let container: ContainerClient | null = null;
 const blob = () => {
@@ -18,10 +21,10 @@ const blob = () => {
 };
 const localPath = (name: string) => path.resolve(config.dataDir, 'files', name);
 
-export function newBlobName(folder: Folder, originalName: string): string {
+export function newBlobName(folder: Folder, originalName: string, projectId?: string): string {
   const d = new Date();
   const safe = originalName.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^[._]+/, '').slice(-100) || 'file';
-  return `${folder}/${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${crypto.randomUUID()}-${safe}`;
+  return `${projectId ? `p/${projectId}/` : ''}${folder}/${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${crypto.randomUUID()}-${safe}`;
 }
 
 export async function saveFile(name: string, data: Buffer, contentType: string): Promise<void> {

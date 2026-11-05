@@ -67,6 +67,10 @@ export const ENTITIES: EntityDef[] = [
       { name: 'paymentMode', label: 'Payment mode', type: 'select', options: PAY_MODES },
       { name: 'file', label: 'Bill file', type: 'file', folder: 'bills' },
       { name: 'needsReview', label: 'Needs review', type: 'boolean', list: true },
+      { name: 'remarks', label: 'Remarks', type: 'textarea' },
+      { name: 'source', label: 'Source', type: 'text', readonly: true },
+      { name: 'submitterName', label: 'Submitted by', type: 'text', readonly: true },
+      { name: 'submitterPhone', label: 'Submitter phone', type: 'text', readonly: true },
       { name: 'notes', label: 'Notes', type: 'textarea' },
     ],
   },
@@ -263,6 +267,25 @@ export const ENTITIES: EntityDef[] = [
 ];
 
 export const entityDef = (type: string) => ENTITIES.find((e) => e.type === type);
+
+/** Types that live outside projects. Everything else in ENTITIES carries a `projectId`. */
+export const GLOBAL_TYPES: readonly string[] = ['user', 'audit'];
+export const isProjectScoped = (type: string) => !!entityDef(type) && !GLOBAL_TYPES.includes(type);
+
+export const PROJECT_STATUSES = ['Active', 'On hold', 'Completed'] as const;
+
+/** Projects are managed through /api/projects (not the generic entity routes). */
+export const PROJECT_DEF: EntityDef = {
+  type: 'project', label: 'Project', plural: 'Projects', group: 'Admin', titleField: 'name',
+  write: ['admin'], read: ALL,
+  fields: [
+    { name: 'name', label: 'Project name', type: 'text', required: true, list: true },
+    { name: 'location', label: 'Location / address', type: 'textarea', list: true },
+    { name: 'status', label: 'Status', type: 'select', options: PROJECT_STATUSES, required: true, list: true },
+    { name: 'startDate', label: 'Start date', type: 'date', list: true },
+    { name: 'notes', label: 'Notes', type: 'textarea' },
+  ],
+};
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

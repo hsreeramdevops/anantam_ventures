@@ -7,8 +7,10 @@ customer payment schedules, follow-ups, site progress and photos, materials, lab
 
 | Area | What you get |
 |---|---|
+| **Projects** | Run several sites at once. After login you pick a project (admins see **+ New project**); a switcher in the header changes project. Every record, report, CSV export and file belongs to one project; the daily digest groups items by project. Admins see all projects, other users only those they're a member of (enforced in the API on every read, write and file download). |
+| **Guest bill upload link** | Each project has a public, unguessable link (`/u/<token>`, 192-bit) where anyone — site staff, suppliers — can submit a bill (PDF/photo, max 10 MB) with **remarks**, their name and phone, **without an account**. It lands in that project as *Needs review* (with a **Guest** badge) and goes through the same AI reading/categorisation. Admins copy, disable or regenerate the link from **Projects** (a new link kills the old one immediately). Abuse limits: 5 uploads / 10 min per IP, 20 / hour per link, magic-byte file check; bad and disabled links look identical. |
 | **Login** | Username **or** email → 6-digit code emailed (10 min, single use, 5 attempts, 3 sends / 15 min). HttpOnly session cookie (12 h). |
-| **Bills & expenses** | Upload PDF/photo → **Azure AI Document Intelligence** reads vendor, bill #, dates, subtotal, GST, total → auto category (vendor default → keyword rules → **Azure OpenAI gpt-4.1-mini** fallback only when no rule matches; also suggests a phase) → bill created as *Needs review*. Duplicate detection. Paid / Partially paid / Unpaid tracking, payment mode, "Mark paid". Vendors learn their default category. |
+| **Bills & expenses** | **Needs review** filter with count. Upload PDF/photo → **Azure AI Document Intelligence** reads vendor, bill #, dates, subtotal, GST, total → auto category (vendor default → keyword rules → **Azure OpenAI gpt-4.1-mini** fallback only when no rule matches; also suggests a phase) → bill created as *Needs review*. Duplicate detection. Paid / Partially paid / Unpaid tracking, payment mode, "Mark paid". Vendors learn their default category. |
 | **Vendors & contractors** | Contact, GSTIN, bank/UPI, default category. |
 | **Budgets** | Budget per category / phase; dashboard shows budget vs actual with overruns highlighted. |
 | **Flats & bookings** | Unit inventory (block, floor, type, area, price, status). Booking auto-sets flat to Booked / Sold / Available. |
@@ -38,6 +40,13 @@ flowchart LR
 - `web/` — React 19 + Vite + TypeScript. Screens are generated from the API's entity schema (`GET /api/schema`).
 - `api/` — Azure Functions v4 (Node/TypeScript). Entity definitions, validation and roles live in `api/src/schema.ts`.
 - `infra/` — Bicep + `deploy.sh`.
+- **Projects:** `project` docs (name, location, status, start date, notes, `members`, `shareToken`, `shareEnabled`) are managed via `/api/projects`.
+  All other entities except users and the audit log carry a `projectId`; the web app sends `?project=<id>` and the API checks
+  membership (`api/src/projects.ts`). New files are stored under `p/<projectId>/…` so downloads are checked against the project.
+  On first start after the upgrade, existing data is moved into a **Default project** (idempotent; existing non-admin users become members).
+  Same Cosmos container and partition key (`/type`) — no extra cost.
+- **Guest upload:** `GET /api/public/projects/{token}` and `POST /api/public/upload/{token}` (no login, `api/src/functions/guest.ts`);
+  rate-limit counters are short-lived Cosmos docs with TTL.
 
 ## Cost (target ≈ $0–2 / month, hard ceiling $150)
 
@@ -57,6 +66,8 @@ and the Visual Studio subscription's spending limit stops all charges at the $15
 **If you exceed 500 bill pages/month**, Document Intelligence F0 returns errors (no charge); bills are still saved for manual entry.
 The OpenAI fallback is fail-safe: if `AZURE_OPENAI_*` settings are missing, the call errors or takes over 10 s, or the answer
 isn't a known category, the bill is simply categorised *Miscellaneous*. The 10K tokens/min capacity also limits worst-case spend.
+The public guest link is rate-limited (per IP and per link) so it can't burn the Document Intelligence free quota or OpenAI tokens;
+an admin can disable or regenerate a leaked link instantly.
 
 ## Local development
 

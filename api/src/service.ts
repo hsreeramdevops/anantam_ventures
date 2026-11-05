@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { SessionUser } from './auth/session';
 import { HttpError } from './http';
 import { normalizeName } from './ai/categorize';
-import { entityDef, validate, ValidationError } from './schema';
+import { entityDef, EntityDef, isProjectScoped, validate, ValidationError } from './schema';
 import { Doc, getStore } from './store';
 
 const AUDIT_TTL = 400 * 24 * 3600;
@@ -17,16 +17,29 @@ export function canWrite(user: SessionUser, type: string) {
   return !!def && def.write.includes(user.role);
 }
 
-export async function audit(user: SessionUser | { username: string }, action: string, entityType: string, entityId: string, summary: string) {
+export async function audit(user: SessionUser | { username: string }, action: string, entityType: string, entityId: string, summary: string, projectId: string | null = null) {
   await getStore().put({
     id: crypto.randomUUID(), type: 'audit', at: new Date().toISOString(), by: user.username,
-    action, entityType, entityId, summary: summary.slice(0, 300),
+    action, entityType, entityId, summary: summary.slice(0, 300), projectId,
   }, AUDIT_TTL);
+}
+
+/** A changed reference must point at an existing record in the same project (no cross-project links). */
+async function checkRefs(def: EntityDef, doc: Doc, prev: Doc | null) {
+  for (const f of def.fields) {
+    if (f.type !== 'ref' || !f.ref || !doc[f.name] || doc[f.name] === prev?.[f.name]) continue;
+    const target = await getStore().get(f.ref, String(doc[f.name]));
+    if (!target || (isProjectScoped(f.ref) && target.projectId !== doc.projectId)) {
+      throw new ValidationError(`${f.label} not found in this project`);
+    }
+  }
 }
 
 /** Business rules applied before every save. Mutates and returns `doc`. */
 async function beforeSave(doc: Doc, prev: Doc | null): Promise<Doc> {
   const store = getStore();
+  const def = entityDef(doc.type);
+  if (def) await checkRefs(def, doc, prev);
   switch (doc.type) {
     case 'bill': {
       const total = Number(doc.total ?? 0);
@@ -60,7 +73,7 @@ async function beforeSave(doc: Doc, prev: Doc | null): Promise<Doc> {
       break;
     }
     case 'flat': {
-      const others = (await store.list('flat')).filter((f) => f.id !== doc.id);
+      const others = (await store.list('flat')).filter((f) => f.id !== doc.id && f.projectId === doc.projectId);
       if (others.some((f) => f.number === doc.number && (f.block ?? null) === (doc.block ?? null))) {
         throw new ValidationError('A flat with this number already exists in this block');
       }
@@ -98,7 +111,7 @@ async function afterSave(doc: Doc, prev: Doc | null, user: SessionUser) {
     const status = doc.status === 'Cancelled' ? 'Available' : doc.status === 'Registered' ? 'Sold' : 'Booked';
     if (flat.status !== status) {
       await store.put({ ...flat, status, updatedAt: new Date().toISOString(), updatedBy: user.username });
-      await audit(user, 'update', 'flat', flat.id, `Flat ${flat.number} → ${status} (booking ${doc.customerName})`);
+      await audit(user, 'update', 'flat', flat.id, `Flat ${flat.number} → ${status} (booking ${doc.customerName})`, (doc.projectId as string) ?? null);
     }
     if (prev?.flatId && prev.flatId !== doc.flatId) {
       const old = await store.get('flat', String(prev.flatId));
@@ -107,40 +120,58 @@ async function afterSave(doc: Doc, prev: Doc | null, user: SessionUser) {
   }
 }
 
-export async function createEntity(user: SessionUser, type: string, input: Record<string, unknown>, extra: Record<string, unknown> = {}) {
-  const def = entityDef(type);
-  if (!def || !canWrite(user, type)) throw new HttpError(403, 'Not allowed');
-  const now = new Date().toISOString();
-  let doc: Doc = { ...validate(def, input), ...extra, id: crypto.randomUUID(), type, createdAt: now, createdBy: user.username };
-  doc = await beforeSave(doc, null);
-  await getStore().put(doc);
-  await afterSave(doc, null, user);
-  await audit(user, 'create', type, doc.id, `${def.label} ${String(doc[def.titleField] ?? doc.id)}`);
+/** Scoped types must be accessed through their project; a mismatch looks like "not found". */
+function scopeCheck(type: string, doc: Doc | null, projectId: string | null): Doc {
+  if (!doc) throw new HttpError(404, 'Not found');
+  if (isProjectScoped(type) && doc.projectId !== projectId) throw new HttpError(404, 'Not found');
   return doc;
 }
 
-export async function updateEntity(user: SessionUser, type: string, id: string, input: Record<string, unknown>) {
+export async function createEntity(user: SessionUser, type: string, input: Record<string, unknown>, extra: Record<string, unknown> = {}, projectId: string | null = null) {
+  const def = entityDef(type);
+  if (!def || !canWrite(user, type)) throw new HttpError(403, 'Not allowed');
+  if (isProjectScoped(type) && !projectId) throw new HttpError(400, 'Select a project first');
+  const now = new Date().toISOString();
+  let doc: Doc = {
+    ...validate(def, input), ...extra, id: crypto.randomUUID(), type, createdAt: now, createdBy: user.username,
+    ...(isProjectScoped(type) ? { projectId } : {}),
+  };
+  doc = await beforeSave(doc, null);
+  await getStore().put(doc);
+  await afterSave(doc, null, user);
+  await audit(user, 'create', type, doc.id, `${def.label} ${String(doc[def.titleField] ?? doc.id)}`, projectId);
+  return doc;
+}
+
+export async function updateEntity(user: SessionUser, type: string, id: string, input: Record<string, unknown>, projectId: string | null = null) {
   const def = entityDef(type);
   if (!def || !canWrite(user, type)) throw new HttpError(403, 'Not allowed');
   const store = getStore();
-  const prev = await store.get(type, id);
-  if (!prev) throw new HttpError(404, 'Not found');
+  const prev = scopeCheck(type, await store.get(type, id), projectId);
   const changes = validate(def, input, true);
   let doc: Doc = { ...prev, ...changes, id, type, updatedAt: new Date().toISOString(), updatedBy: user.username };
   doc = await beforeSave(doc, prev);
   await store.put(doc);
   await afterSave(doc, prev, user);
   const changed = Object.keys(changes).filter((k) => JSON.stringify(prev[k]) !== JSON.stringify(doc[k]));
-  await audit(user, 'update', type, id, `${def.label} ${String(doc[def.titleField] ?? id)}: ${changed.join(', ') || 'no changes'}`);
+  await audit(user, 'update', type, id, `${def.label} ${String(doc[def.titleField] ?? id)}: ${changed.join(', ') || 'no changes'}`, projectId);
   return doc;
 }
 
-export async function deleteEntity(user: SessionUser, type: string, id: string) {
+export async function getEntity(type: string, id: string, projectId: string | null = null) {
+  return scopeCheck(type, await getStore().get(type, id), projectId);
+}
+
+export async function listEntities(type: string, projectId: string | null = null) {
+  const items = await getStore().list(type);
+  return isProjectScoped(type) ? items.filter((d) => d.projectId === projectId) : items;
+}
+
+export async function deleteEntity(user: SessionUser, type: string, id: string, projectId: string | null = null) {
   const def = entityDef(type);
   if (!def || !canWrite(user, type)) throw new HttpError(403, 'Not allowed');
   const store = getStore();
-  const prev = await store.get(type, id);
-  if (!prev) throw new HttpError(404, 'Not found');
+  const prev = scopeCheck(type, await store.get(type, id), projectId);
   if (type === 'user' && prev.id === user.id) throw new HttpError(400, 'You cannot delete yourself');
   if (type === 'user' && prev.role === 'admin') {
     const admins = (await store.list('user')).filter((u) => u.role === 'admin' && u.active !== false && u.id !== id);
@@ -151,12 +182,12 @@ export async function deleteEntity(user: SessionUser, type: string, id: string) 
     const flat = await store.get('flat', String(prev.flatId));
     if (flat && flat.status === 'Booked') await store.put({ ...flat, status: 'Available' });
   }
-  await audit(user, 'delete', type, id, `${def.label} ${String(prev[def.titleField] ?? id)}`);
+  await audit(user, 'delete', type, id, `${def.label} ${String(prev[def.titleField] ?? id)}`, projectId);
 }
 
-export async function findVendorByName(name: string): Promise<Doc | null> {
+export async function findVendorByName(name: string, projectId: string): Promise<Doc | null> {
   const key = normalizeName(name);
   if (!key) return null;
-  const vendors = await getStore().list('vendor');
+  const vendors = await listEntities('vendor', projectId);
   return vendors.find((v) => normalizeName(String(v.name ?? '')) === key) ?? null;
 }
