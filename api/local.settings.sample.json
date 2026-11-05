@@ -1,0 +1,11 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "AzureWebJobsStorage": "",
+    "BOOTSTRAP_ADMIN_EMAIL": "you@example.com",
+    "JWT_SECRET": "change-me-to-a-long-random-string",
+    "JOB_KEY": "change-me-too",
+    "COOKIE_SECURE": "false"
+  }
+}

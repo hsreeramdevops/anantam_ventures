@@ -1,0 +1,162 @@
+import crypto from 'crypto';
+import { SessionUser } from './auth/session';
+import { HttpError } from './http';
+import { normalizeName } from './ai/categorize';
+import { entityDef, validate, ValidationError } from './schema';
+import { Doc, getStore } from './store';
+
+const AUDIT_TTL = 400 * 24 * 3600;
+const today = () => new Date().toISOString().slice(0, 10);
+
+export function canRead(user: SessionUser, type: string) {
+  const def = entityDef(type);
+  return !!def && def.read.includes(user.role);
+}
+export function canWrite(user: SessionUser, type: string) {
+  const def = entityDef(type);
+  return !!def && def.write.includes(user.role);
+}
+
+export async function audit(user: SessionUser | { username: string }, action: string, entityType: string, entityId: string, summary: string) {
+  await getStore().put({
+    id: crypto.randomUUID(), type: 'audit', at: new Date().toISOString(), by: user.username,
+    action, entityType, entityId, summary: summary.slice(0, 300),
+  }, AUDIT_TTL);
+}
+
+/** Business rules applied before every save. Mutates and returns `doc`. */
+async function beforeSave(doc: Doc, prev: Doc | null): Promise<Doc> {
+  const store = getStore();
+  switch (doc.type) {
+    case 'bill': {
+      const total = Number(doc.total ?? 0);
+      // Marking "Paid" without an amount pays it in full.
+      if (doc.status === 'Paid' && prev?.status !== 'Paid' && !(Number(doc.paidAmount) > 0)) doc.paidAmount = total;
+      if (doc.status === 'Unpaid' && prev && prev.status !== 'Unpaid') { doc.paidAmount = 0; doc.paidDate = null; }
+      const paid = Number(doc.paidAmount ?? 0);
+      if (paid > 0 && !doc.paidDate) doc.paidDate = today();
+      doc.status = paid <= 0 ? 'Unpaid' : paid + 0.005 >= total ? 'Paid' : 'Partially Paid';
+      if (doc.vendorId) {
+        const v = await store.get('vendor', String(doc.vendorId));
+        if (v) {
+          doc.vendorName = v.name;
+          // Learn: the first reviewed category becomes the vendor's default for future bills.
+          if (!v.category && doc.category && doc.needsReview === false) await store.put({ ...v, category: doc.category });
+        }
+      }
+      break;
+    }
+    case 'user': {
+      doc.username = String(doc.username).toLowerCase().replace(/[^a-z0-9._-]/g, '');
+      if (!doc.username) throw new ValidationError('Username may only contain a-z, 0-9, . _ -');
+      if (doc.active === null || doc.active === undefined) doc.active = true;
+      const others = (await store.list('user')).filter((u) => u.id !== doc.id);
+      if (others.some((u) => u.username === doc.username)) throw new ValidationError('Username already taken');
+      if (others.some((u) => u.email === doc.email)) throw new ValidationError('Email already used by another user');
+      if (prev?.role === 'admin' && (doc.role !== 'admin' || doc.active === false)
+        && !others.some((u) => u.role === 'admin' && u.active !== false)) {
+        throw new ValidationError('Cannot remove the last active admin');
+      }
+      break;
+    }
+    case 'flat': {
+      const others = (await store.list('flat')).filter((f) => f.id !== doc.id);
+      if (others.some((f) => f.number === doc.number && (f.block ?? null) === (doc.block ?? null))) {
+        throw new ValidationError('A flat with this number already exists in this block');
+      }
+      break;
+    }
+    case 'booking': {
+      if (doc.status === null || doc.status === undefined) doc.status = 'Active';
+      break;
+    }
+    case 'customerPayment': {
+      if (doc.status === 'Received' && !(Number(doc.receivedAmount) > 0)) doc.receivedAmount = doc.amount;
+      if (Number(doc.receivedAmount) > 0) {
+        doc.receivedDate ??= today();
+        if (Number(doc.receivedAmount) + 0.005 >= Number(doc.amount)) doc.status = 'Received';
+      }
+      doc.status ??= 'Pending';
+      break;
+    }
+    case 'labourer':
+      if (doc.active === null || doc.active === undefined) doc.active = true;
+      break;
+    case 'task':
+      doc.status ??= 'Open';
+      break;
+  }
+  return doc;
+}
+
+/** After-save side effects (e.g. booking a flat flips its status). */
+async function afterSave(doc: Doc, prev: Doc | null, user: SessionUser) {
+  if (doc.type === 'booking' && doc.flatId) {
+    const store = getStore();
+    const flat = await store.get('flat', String(doc.flatId));
+    if (!flat) return;
+    const status = doc.status === 'Cancelled' ? 'Available' : doc.status === 'Registered' ? 'Sold' : 'Booked';
+    if (flat.status !== status) {
+      await store.put({ ...flat, status, updatedAt: new Date().toISOString(), updatedBy: user.username });
+      await audit(user, 'update', 'flat', flat.id, `Flat ${flat.number} → ${status} (booking ${doc.customerName})`);
+    }
+    if (prev?.flatId && prev.flatId !== doc.flatId) {
+      const old = await store.get('flat', String(prev.flatId));
+      if (old && old.status === 'Booked') await store.put({ ...old, status: 'Available' });
+    }
+  }
+}
+
+export async function createEntity(user: SessionUser, type: string, input: Record<string, unknown>, extra: Record<string, unknown> = {}) {
+  const def = entityDef(type);
+  if (!def || !canWrite(user, type)) throw new HttpError(403, 'Not allowed');
+  const now = new Date().toISOString();
+  let doc: Doc = { ...validate(def, input), ...extra, id: crypto.randomUUID(), type, createdAt: now, createdBy: user.username };
+  doc = await beforeSave(doc, null);
+  await getStore().put(doc);
+  await afterSave(doc, null, user);
+  await audit(user, 'create', type, doc.id, `${def.label} ${String(doc[def.titleField] ?? doc.id)}`);
+  return doc;
+}
+
+export async function updateEntity(user: SessionUser, type: string, id: string, input: Record<string, unknown>) {
+  const def = entityDef(type);
+  if (!def || !canWrite(user, type)) throw new HttpError(403, 'Not allowed');
+  const store = getStore();
+  const prev = await store.get(type, id);
+  if (!prev) throw new HttpError(404, 'Not found');
+  const changes = validate(def, input, true);
+  let doc: Doc = { ...prev, ...changes, id, type, updatedAt: new Date().toISOString(), updatedBy: user.username };
+  doc = await beforeSave(doc, prev);
+  await store.put(doc);
+  await afterSave(doc, prev, user);
+  const changed = Object.keys(changes).filter((k) => JSON.stringify(prev[k]) !== JSON.stringify(doc[k]));
+  await audit(user, 'update', type, id, `${def.label} ${String(doc[def.titleField] ?? id)}: ${changed.join(', ') || 'no changes'}`);
+  return doc;
+}
+
+export async function deleteEntity(user: SessionUser, type: string, id: string) {
+  const def = entityDef(type);
+  if (!def || !canWrite(user, type)) throw new HttpError(403, 'Not allowed');
+  const store = getStore();
+  const prev = await store.get(type, id);
+  if (!prev) throw new HttpError(404, 'Not found');
+  if (type === 'user' && prev.id === user.id) throw new HttpError(400, 'You cannot delete yourself');
+  if (type === 'user' && prev.role === 'admin') {
+    const admins = (await store.list('user')).filter((u) => u.role === 'admin' && u.active !== false && u.id !== id);
+    if (!admins.length) throw new HttpError(400, 'Cannot delete the last admin');
+  }
+  await store.delete(type, id);
+  if (type === 'booking' && prev.flatId && prev.status !== 'Cancelled') {
+    const flat = await store.get('flat', String(prev.flatId));
+    if (flat && flat.status === 'Booked') await store.put({ ...flat, status: 'Available' });
+  }
+  await audit(user, 'delete', type, id, `${def.label} ${String(prev[def.titleField] ?? id)}`);
+}
+
+export async function findVendorByName(name: string): Promise<Doc | null> {
+  const key = normalizeName(name);
+  if (!key) return null;
+  const vendors = await getStore().list('vendor');
+  return vendors.find((v) => normalizeName(String(v.name ?? '')) === key) ?? null;
+}

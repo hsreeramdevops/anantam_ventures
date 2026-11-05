@@ -1,0 +1,18 @@
+# SWA managed functions have no timer triggers, so a free scheduled Action pings the digest endpoint.
+name: Daily digest
+on:
+  schedule:
+    - cron: '30 3 * * *' # 09:00 IST
+  workflow_dispatch:
+permissions: {}
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger digest
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          JOB_KEY: ${{ secrets.JOB_KEY }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$JOB_KEY" ]; then echo "Secrets not set; skipping."; exit 0; fi
+          curl -fsS -X POST "$APP_URL/api/jobs/daily-digest" -H "X-Requested-With: github-actions" -H "x-job-key: $JOB_KEY"

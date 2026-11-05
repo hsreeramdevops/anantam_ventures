@@ -1,0 +1,26 @@
+{
+  "name": "anantam-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "dist/src/index.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "start": "npm run build && func start",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@azure/communication-email": "^1.1.0",
+    "@azure/cosmos": "^4.10.1",
+    "@azure/functions": "^4.17.0",
+    "@azure/storage-blob": "^12.34.0",
+    "jose": "^6.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}
