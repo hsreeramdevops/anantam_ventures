@@ -34,18 +34,19 @@ export default function Projects() {
       <div className="project-grid">
         {projects.map((p) => (
           <div key={p.id} className={`card project-card ${current?.id === p.id ? 'selected' : ''}`}>
-            <div className="row between">
+            <div className="row between project-card-head" role="button" tabIndex={0} title={`Open ${p.name}`}
+              onClick={() => open(p)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(p); } }}>
               <strong>{p.name}</strong>
               <span className={`pill ${String(p.status ?? '').replace(/\s/g, '-').toLowerCase()}`}>{p.status}</span>
             </div>
             {p.location && <div className="muted small">{p.location}</div>}
             {p.startDate && <div className="muted small">Started {fmtDate(p.startDate)}</div>}
+            <button className={`btn open-project ${current?.id === p.id ? 'current' : 'primary'}`} onClick={() => open(p)}>
+              {current?.id === p.id ? '✓ Current project · Open' : 'Open project →'}
+            </button>
             {canManage && <ShareLink project={p} kind="upload" onChange={reload} />}
             {canManage && <ShareLink project={p} kind="pay" onChange={reload} />}
-            <div className="row wrap">
-              <button className="btn primary small" onClick={() => open(p)}>{current?.id === p.id ? 'Current project' : 'Open'}</button>
-              {canManage && <button className="btn small" onClick={() => setEditing(p)}>Edit / members</button>}
-            </div>
+            {canManage && <div className="row wrap"><button className="btn small" onClick={() => setEditing(p)}>Edit / members</button></div>}
           </div>
         ))}
       </div>
