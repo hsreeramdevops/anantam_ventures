@@ -23,19 +23,27 @@ az deployment sub create -n anantam-budget -l "$LOCATION" -f budget.bicep \
 
 az group create -n "$RG" -l "$LOCATION" --tags app=anantam-ventures -o none
 
-# Reuse existing secrets on reruns: regenerating JWT_SECRET logs everyone out and a new JOB_KEY breaks the GitHub secret.
+# Reuse existing secrets on reruns: regenerating JWT_SECRET logs everyone out, a new JOB_KEY breaks the GitHub
+# secret and a new TELEGRAM_WEBHOOK_SECRET breaks the registered webhook. The bicep replaces all app settings,
+# so the hand-set TELEGRAM_BOT_TOKEN is carried over too (or pass TELEGRAM_BOT_TOKEN in the environment).
 EXISTING_SWA=$(az staticwebapp list -g "$RG" --query "[0].name" -o tsv 2>/dev/null || true)
-JWT_SECRET="" JOB_KEY=""
+JWT_SECRET="" JOB_KEY="" TG_SECRET="" TG_TOKEN=""
+existing() { az staticwebapp appsettings list -n "$EXISTING_SWA" -g "$RG" --query "properties.$1" -o tsv 2>/dev/null || true; }
 if [ -n "$EXISTING_SWA" ]; then
-  JWT_SECRET=$(az staticwebapp appsettings list -n "$EXISTING_SWA" -g "$RG" --query properties.JWT_SECRET -o tsv 2>/dev/null || true)
-  JOB_KEY=$(az staticwebapp appsettings list -n "$EXISTING_SWA" -g "$RG" --query properties.JOB_KEY -o tsv 2>/dev/null || true)
+  JWT_SECRET=$(existing JWT_SECRET)
+  JOB_KEY=$(existing JOB_KEY)
+  TG_SECRET=$(existing TELEGRAM_WEBHOOK_SECRET)
+  TG_TOKEN=$(existing TELEGRAM_BOT_TOKEN)
 fi
 JWT_SECRET=${JWT_SECRET:-$(openssl rand -hex 32)}
 JOB_KEY=${JOB_KEY:-$(openssl rand -hex 24)}
+TG_SECRET=${TG_SECRET:-$(openssl rand -hex 32)}
+TG_TOKEN=${TELEGRAM_BOT_TOKEN:-$TG_TOKEN}
 
 az deployment group create -g "$RG" -n anantam -f main.bicep \
   -p location="$LOCATION" bootstrapAdminEmail="$ADMIN_EMAIL" \
      jwtSecret="$JWT_SECRET" jobKey="$JOB_KEY" \
+     telegramWebhookSecret="$TG_SECRET" telegramBotToken="$TG_TOKEN" \
   --query properties.outputs -o json
 
 SWA=$(az staticwebapp list -g "$RG" --query "[0].name" -o tsv)

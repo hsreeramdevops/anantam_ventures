@@ -19,6 +19,10 @@ export const config = {
   get emailSender() { return env('EMAIL_SENDER'); },
   get bootstrapAdminEmail() { return env('BOOTSTRAP_ADMIN_EMAIL').toLowerCase(); },
   get jobKey() { return env('JOB_KEY'); },
+  get telegramBotToken() { return env('TELEGRAM_BOT_TOKEN'); },
+  get telegramWebhookSecret() { return env('TELEGRAM_WEBHOOK_SECRET'); },
+  /** Public site URL used in notification links and the Telegram webhook address. */
+  get publicUrl() { return (env('PUBLIC_URL') || 'https://www.anantamventures.com').replace(/\/+$/, ''); },
   get appName() { return env('APP_NAME') || 'Anantam Ventures'; },
   get cookieSecure() { return env('COOKIE_SECURE') !== 'false'; },
   get dataDir() { return env('LOCAL_DATA_DIR') || '.data'; },

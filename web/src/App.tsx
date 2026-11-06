@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './auth';
 import { useProject } from './project';
 import GuestUpload from './pages/GuestUpload';
 import PaymentRequest from './pages/PaymentRequest';
 import Projects from './pages/Projects';
+import Notifications from './pages/Notifications';
 import BillsPage from './pages/BillsPage';
 import Dashboard from './pages/Dashboard';
 import EntityPage from './pages/EntityPage';
@@ -22,6 +23,11 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const loc = useLocation();
   const nav = useNavigate();
+  // Links from notifications carry ?project=<id>; switch to it if this user can access it.
+  const wantProject = new URLSearchParams(loc.search).get('project');
+  useEffect(() => {
+    if (wantProject && wantProject !== current?.id && projects.some((p) => p.id === wantProject)) select(wantProject);
+  }, [wantProject, projects, current?.id, select]);
 
   // Public guest upload page: no login, nothing else reachable.
   if (loc.pathname.startsWith('/u/')) return <Routes><Route path="/u/:token" element={<GuestUpload />} /></Routes>;
@@ -50,6 +56,7 @@ export default function App() {
       </header>
       <nav className={`sidebar ${menuOpen ? 'open' : ''}`} onClick={() => setMenuOpen(false)}>
         <NavLink to="/projects">Projects</NavLink>
+        <NavLink to="/notifications">Notifications</NavLink>
         {current && <NavLink to="/" end>Dashboard</NavLink>}
         {current && groups.map((g) => (
           <div key={g}>
@@ -62,7 +69,7 @@ export default function App() {
         ))}
       </nav>
       <main className="content" key={`${current?.id}:${loc.pathname}`}>
-        {!current ? <Projects /> : <Routes>
+        {loc.pathname === '/notifications' ? <Notifications /> : !current ? <Projects /> : <Routes>
           <Route path="/projects" element={<Projects />} />
           <Route path="/" element={<Dashboard />} />
           <Route path="/bills" element={<BillsPage />} />

@@ -43,6 +43,14 @@ export default function EntityPage(props: Props) {
     try { setItems((await api.list(type)).items); setErr(''); } catch (x: any) { setErr(x.message); }
   }, [type]);
   useEffect(() => { load(); }, [load, props.reloadKey]);
+  // Deep link (e.g. from a Telegram alert): ?open=<id> opens that record once loaded.
+  useEffect(() => {
+    const id = search.get('open');
+    const d = id ? items.find((x) => x.id === id) : null;
+    if (!d) return;
+    reloadRefs(); setEditing(d);
+    const next = new URLSearchParams(search); next.delete('open'); setSearch(next, { replace: true });
+  }, [items]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const cols = useMemo(() => def?.fields.filter((f) => f.list) ?? [], [def]);
   const filterable = useMemo(() => cols.filter((f) => f.type === 'select').slice(0, 3), [cols]);

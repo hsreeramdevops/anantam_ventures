@@ -6,6 +6,7 @@ import { dashboard, digestItems, labourWages, loadAll, materialStock } from '../
 import { canAccessProject, ensureMigrated, requireProject } from '../projects';
 import { SessionUser } from '../auth/session';
 import { getStore } from '../store';
+import { sendMessage, subscribedEvents, telegramConfigured } from '../notify/telegram';
 import crypto from 'crypto';
 
 app.http('dashboard', {
@@ -39,7 +40,7 @@ const money = (v: unknown) => `₹${Number(v ?? 0).toLocaleString('en-IN')}`;
 /** Daily digest, called by the scheduled GitHub Action (SWA managed functions have no timer triggers). */
 app.http('dailyDigest', {
   methods: ['POST'], authLevel: 'anonymous', route: 'jobs/daily-digest',
-  handler: route(async (req) => {
+  handler: route(async (req, ctx) => {
     const key = req.headers.get('x-job-key') ?? '';
     const expected = config.jobKey;
     if (!expected || key.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(key), Buffer.from(expected))) {
@@ -51,6 +52,8 @@ app.http('dailyDigest', {
     const projectName = new Map(data.project.map((p) => [p.id, String(p.name ?? 'Project')]));
     const users = data.user.filter((u) => u.active !== false && u.email);
     let sent = 0;
+    let tgSent = 0;
+    const tgLinks = new Map(telegramConfigured() ? (await getStore().list('tglink')).map((l) => [l.id, l]) : []);
     for (const u of users) {
       const su = { id: u.id, role: u.role } as SessionUser;
       // Lines grouped by project; each user only sees projects they can access.
@@ -73,7 +76,17 @@ app.http('dailyDigest', {
         .map(([pid, lines]) => `== ${projectName.get(pid)} ==\n${lines.join('\n')}`).join('\n\n');
       await sendMail({ to: [String(u.email)], subject: `${config.appName}: ${count} item(s) need attention`, text });
       sent++;
+      // Telegram copy, only for the projects this user subscribed the digest for.
+      const link = tgLinks.get(u.id);
+      if (link?.chatId) {
+        const tgText = [...byProject.entries()].filter(([pid]) => subscribedEvents(link, String(u.role), pid).includes('digest'))
+          .map(([pid, lines]) => `== ${projectName.get(pid)} ==\n${lines.join('\n')}`).join('\n\n');
+        if (tgText) {
+          await sendMessage(String(link.chatId), `📋 ${config.appName} daily digest\n\n${tgText}`)
+            .then(() => { tgSent++; }).catch((e) => ctx.warn(`telegram digest failed: ${e.message}`));
+        }
+      }
     }
-    return json({ ok: true, sent, counts: { bills: bills.length, receivables: receivables.length, tasks: tasks.length, docs: docs.length } });
+    return json({ ok: true, sent, telegram: tgSent, counts: { bills: bills.length, receivables: receivables.length, tasks: tasks.length, docs: docs.length } });
   }, { auth: false }),
 });

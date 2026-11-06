@@ -14,6 +14,13 @@ param jwtSecret string
 @secure()
 @minLength(16)
 param jobKey string
+@secure()
+@minLength(32)
+@description('Telegram sends this in X-Telegram-Bot-Api-Secret-Token; the webhook rejects calls without it.')
+param telegramWebhookSecret string
+@secure()
+@description('From @BotFather. Empty keeps Telegram alerts switched off.')
+param telegramBotToken string = ''
 
 var suffix = uniqueString(resourceGroup().id)
 var tags = { app: 'anantam-ventures', costCap: 'free-tier' }
@@ -157,6 +164,8 @@ resource swaSettings 'Microsoft.Web/staticSites/config@2023-12-01' = {
     BOOTSTRAP_ADMIN_EMAIL: bootstrapAdminEmail
     JWT_SECRET: jwtSecret
     JOB_KEY: jobKey
+    TELEGRAM_WEBHOOK_SECRET: telegramWebhookSecret
+    TELEGRAM_BOT_TOKEN: telegramBotToken
   }
 }
 
