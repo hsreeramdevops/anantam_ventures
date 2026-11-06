@@ -6,7 +6,7 @@ import { newBlobName, saveFile, sniffType } from '../files/blob';
 import { HttpError, json, route } from '../http';
 import { findProjectByShareToken } from '../projects';
 import { clientIp, hitRateLimit } from '../ratelimit';
-import { ValidationError } from '../schema';
+import { optionalEmail, ValidationError } from '../schema';
 import { createEntity, findVendorByName } from '../service';
 import { GUEST_LIMITS } from './guest';
 
@@ -88,7 +88,8 @@ export function readPayRequestFields(form: FormData) {
     if (bankName.length > 100) throw new ValidationError('Bank name is too long');
     Object.assign(payTo, { accountHolder, accountNumber, ifsc, bankName: bankName || null });
   }
-  return { payee, amount, purpose, requesterName: requesterName || null, requesterPhone: requesterPhone || null, payTo };
+  const requesterEmail = optionalEmail(field(form, 'requesterEmail'));
+  return { payee, amount, purpose, requesterName: requesterName || null, requesterPhone: requesterPhone || null, requesterEmail, payTo };
 }
 
 /** QR image: JPEG/PNG/WEBP by magic bytes, same size limit as bill uploads. */
@@ -157,7 +158,7 @@ app.http('payRequestSubmit', {
       remarks: f.purpose || null,
     }, {
       source: 'payment-request', payee: f.payee, payTo: f.payTo,
-      submitterName: f.requesterName, submitterPhone: f.requesterPhone,
+      submitterName: f.requesterName, submitterPhone: f.requesterPhone, submitterEmail: f.requesterEmail,
     }, project.id);
     return json({ ok: true, project: project.name }, 201);
   }, { auth: false }),

@@ -12,6 +12,29 @@ interface Status {
   projects: { id: string; name: string; events: string[] }[];
 }
 
+function BillEmailCard() {
+  const [pref, setPref] = useState<{ billStatusEmails: boolean; email: string } | null>(null);
+  const [err, setErr] = useState('');
+  useEffect(() => { api.get<typeof pref>('/api/notifications/email').then(setPref).catch((x) => setErr(x.message)); }, []);
+  const toggle = async (on: boolean) => {
+    setErr('');
+    try { setPref(await api.put<NonNullable<typeof pref>>('/api/notifications/email', { billStatusEmails: on })); } catch (x: any) { setErr(x.message); }
+  };
+  return (
+    <div className="card" style={{ maxWidth: 760, marginBottom: 12 }}>
+      <h3 style={{ marginTop: 0 }}>Email</h3>
+      {pref && (
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input type="checkbox" checked={pref.billStatusEmails} onChange={(e) => toggle(e.target.checked)} />
+          Email me when my bills change status (Unpaid / Partially Paid / Paid)
+        </label>
+      )}
+      {pref && <p className="muted small">Sent to {pref.email} for bills you added. You never get an email for your own changes.</p>}
+      {err && <p className="error">{err}</p>}
+    </div>
+  );
+}
+
 export default function Notifications() {
   const { user } = useAuth();
   const [st, setSt] = useState<Status | null>(null);
@@ -61,6 +84,7 @@ export default function Notifications() {
   return (
     <div>
       <h2>Notifications</h2>
+      <BillEmailCard />
       <div className="card" style={{ maxWidth: 760 }}>
         <h3 style={{ marginTop: 0 }}>Telegram</h3>
         {!st.configured ? (

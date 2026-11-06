@@ -3,7 +3,7 @@ import { SessionUser } from '../auth/session';
 import { HttpError, json, route } from '../http';
 import { findProjectByShareToken } from '../projects';
 import { clientIp, hitRateLimit } from '../ratelimit';
-import { ValidationError } from '../schema';
+import { optionalEmail, ValidationError } from '../schema';
 import { processBillUpload } from './bills';
 import { readUpload } from './files';
 
@@ -39,7 +39,8 @@ export function readGuestFields(form: FormData) {
   if (!remarks) throw new ValidationError('Remarks are required');
   if (remarks.length > 1000) throw new ValidationError('Remarks are too long (max 1000 characters)');
   if (submitterPhone && !/^[0-9+()\s-]{6,20}$/.test(submitterPhone)) throw new ValidationError('Phone number looks invalid');
-  return { submitterName, submitterPhone: submitterPhone || null, remarks };
+  const submitterEmail = optionalEmail(field(form, 'email'));
+  return { submitterName, submitterPhone: submitterPhone || null, submitterEmail, remarks };
 }
 
 app.http('guestProject', {
@@ -68,7 +69,7 @@ app.http('guestUpload', {
       id: 'guest', username: `guest:${fields.submitterName}`.slice(0, 120), name: fields.submitterName, email: '', role: 'engineer',
     };
     await processBillUpload(ctx, actor, project.id, upload, { remarks: fields.remarks },
-      { source: 'guest', submitterName: fields.submitterName, submitterPhone: fields.submitterPhone });
+      { source: 'guest', submitterName: fields.submitterName, submitterPhone: fields.submitterPhone, submitterEmail: fields.submitterEmail });
     return json({ ok: true, project: project.name }, 201);
   }, { auth: false }),
 });

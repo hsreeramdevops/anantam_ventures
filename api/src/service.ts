@@ -5,6 +5,7 @@ import { normalizeName } from './ai/categorize';
 import { entityDef, EntityDef, isProjectScoped, validate, ValidationError } from './schema';
 import { Doc, getStore } from './store';
 import { notifyBillCreated, notifyBillUpdated } from './notify/telegram';
+import { notifyBillStatusEmail } from './notify/statusEmail';
 
 const AUDIT_TTL = 400 * 24 * 3600;
 const today = () => new Date().toISOString().slice(0, 10);
@@ -107,7 +108,9 @@ async function beforeSave(doc: Doc, prev: Doc | null): Promise<Doc> {
 async function afterSave(doc: Doc, prev: Doc | null, user: SessionUser) {
   if (doc.type === 'bill') {
     // Telegram alerts never throw and time out quickly, so they cannot break the save.
-    if (prev) await notifyBillUpdated(user, prev, doc); else await notifyBillCreated(user, doc);
+    if (prev) {
+      await Promise.all([notifyBillUpdated(user, prev, doc), notifyBillStatusEmail(user, prev, doc)]);
+    } else await notifyBillCreated(user, doc);
   }
   if (doc.type === 'booking' && doc.flatId) {
     const store = getStore();

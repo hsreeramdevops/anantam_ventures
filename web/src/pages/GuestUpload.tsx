@@ -50,6 +50,7 @@ export default function GuestUpload() {
             </label>
             <label className="field"><span>Your name *</span><input name="name" required maxLength={100} autoComplete="name" /></label>
             <label className="field"><span>Phone</span><input name="phone" type="tel" maxLength={20} autoComplete="tel" /></label>
+            <label className="field"><span>Your email (to get status updates)</span><input name="email" type="email" maxLength={254} autoComplete="email" inputMode="email" /></label>
             {err && <p className="error">{err}</p>}
             <button className="btn primary block" disabled={busy}>{busy ? 'Uploading…' : 'Submit bill'}</button>
           </form>

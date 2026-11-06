@@ -101,6 +101,7 @@ export default function PaymentRequest() {
 
             <label className="field"><span>Requested by (your name)</span><input name="requesterName" maxLength={100} autoComplete="name" /></label>
             <label className="field"><span>Your phone</span><input name="requesterPhone" type="tel" maxLength={20} autoComplete="tel" /></label>
+            <label className="field"><span>Your email (to get status updates)</span><input name="requesterEmail" type="email" maxLength={254} autoComplete="email" inputMode="email" /></label>
             {err && <p className="error">{err}</p>}
             <button className="btn primary block" disabled={busy}>{busy ? 'Sending…' : 'Submit payment request'}</button>
           </form>

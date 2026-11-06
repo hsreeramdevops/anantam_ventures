@@ -292,6 +292,14 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export class ValidationError extends Error {}
 
+/** Optional email typed into a public form; returns null when blank, throws when malformed. */
+export function optionalEmail(raw: string): string | null {
+  const v = raw.trim().toLowerCase();
+  if (!v) return null;
+  if (v.length > 254 || !/^[^\s@<>(),;:"]+@[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(v)) throw new ValidationError('Email address looks invalid');
+  return v;
+}
+
 /** Keeps only declared fields, coerces types and checks constraints. */
 export function validate(def: EntityDef, input: Record<string, unknown>, partial = false): Record<string, unknown> {
   const out: Record<string, unknown> = {};
