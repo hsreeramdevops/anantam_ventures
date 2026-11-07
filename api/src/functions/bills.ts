@@ -9,19 +9,16 @@ import { PAY_MODES, ValidationError } from '../schema';
 import { canWrite, createEntity, findVendorByName, getEntity, listEntities, updateEntity } from '../service';
 import { readUpload, Upload } from './files';
 
-/**
- * Store file → AI-extract fields → categorise → create a bill flagged for review in `projectId`.
- * Parsing failures never lose the upload: the bill is still created for manual entry.
- * Shared by staff uploads and public guest uploads.
- */
-export async function processBillUpload(
-  ctx: InvocationContext, actor: SessionUser, projectId: string, upload: Upload,
-  input: Record<string, unknown> = {}, extra: Record<string, unknown> = {},
-) {
+/** Placeholder payee when nobody told us whom to pay and AI could not read a vendor; the edit form asks. */
+export const PAYEE_TBC = 'To be confirmed';
+
+export interface ReadBill { blobName: string; parsed: ParsedBill; parseError: string | null }
+
+/** Store the file in the project and AI-extract its fields. Parsing failures never lose the upload. */
+export async function storeAndReadBill(ctx: InvocationContext, projectId: string, upload: Upload): Promise<ReadBill> {
   const { data, type, name } = upload;
   const blobName = newBlobName('bills', name, projectId);
   await saveFile(blobName, data, type);
-
   let parsed: ParsedBill = { itemsText: '' };
   let parseError: string | null = null;
   if (docIntelConfigured()) {
@@ -29,9 +26,17 @@ export async function processBillUpload(
   } else {
     parseError = 'AI parsing is not configured; enter details manually.';
   }
+  return { blobName, parsed, parseError };
+}
 
+/** Categorise and create the bill (flagged for review) for an already stored + read file; `bill.file` links it. */
+export async function createBillFromRead(
+  actor: SessionUser, projectId: string, read: ReadBill,
+  input: Record<string, unknown> = {}, extra: Record<string, unknown> = {},
+) {
+  const { blobName, parsed, parseError } = read;
   const vendor = parsed.vendorName ? await findVendorByName(parsed.vendorName, projectId) : null;
-  const { category, phase } = await categorizeWithAi(parsed.itemsText || name, (vendor?.category as string) ?? null);
+  const { category, phase } = await categorizeWithAi(parsed.itemsText || blobName.split('/').pop()!, (vendor?.category as string) ?? null);
 
   let duplicateOf: string | null = null;
   if (parsed.billNumber && parsed.vendorName) {
@@ -42,6 +47,7 @@ export async function processBillUpload(
   }
 
   const bill = await createEntity(actor, 'bill', {
+    payee: vendor?.name ?? parsed.vendorName ?? PAYEE_TBC,
     vendorId: vendor?.id ?? null,
     vendorName: vendor?.name ?? parsed.vendorName ?? null,
     billNumber: parsed.billNumber ?? null,
@@ -60,6 +66,17 @@ export async function processBillUpload(
   }, { source: 'staff', aiParsed: !parseError, duplicateOf, ...extra }, projectId);
 
   return { bill, parseError, vendor, parsed };
+}
+
+/**
+ * Store file → AI-extract fields → categorise → create a bill flagged for review in `projectId`.
+ * Shared by staff uploads and one-step public guest uploads.
+ */
+export async function processBillUpload(
+  ctx: InvocationContext, actor: SessionUser, projectId: string, upload: Upload,
+  input: Record<string, unknown> = {}, extra: Record<string, unknown> = {},
+) {
+  return createBillFromRead(actor, projectId, await storeAndReadBill(ctx, projectId, upload), input, extra);
 }
 
 app.http('billUpload', {

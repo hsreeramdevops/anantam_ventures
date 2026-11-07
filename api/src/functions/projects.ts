@@ -32,7 +32,7 @@ app.http('projectCollection', {
     const now = new Date().toISOString();
     const doc = await getStore().put({
       ...validate(PROJECT_DEF, { status: 'Active', ...input }), members: (await readMembers(input)) ?? [],
-      shareToken: newShareToken(), shareEnabled: true, payToken: newShareToken(), payEnabled: true,
+      shareToken: newShareToken(), shareEnabled: true,
       id: crypto.randomUUID(), type: 'project', createdAt: now, createdBy: user!.username,
     });
     await audit(user!, 'create', 'project', doc.id, `Project ${doc.name}`, doc.id);
@@ -58,9 +58,9 @@ app.http('projectItem', {
 });
 
 /**
- * Public link management for `link` = `upload` (guest bill upload, default) or `pay` (payment request):
- * `regenerate` (old link dies immediately), `disable`, `enable`. Projects created before payment
- * requests have no pay token until an admin regenerates it.
+ * Public link management: `regenerate` (old link dies immediately), `disable`, `enable`.
+ * `link` = `upload` (default) is the single project share link; it also revokes / disables / re-enables the
+ * legacy payment-request alias. `link` = `pay` still manages that alias alone (older clients).
  */
 app.http('projectShare', {
   methods: ['POST'], authLevel: 'anonymous', route: 'projects/{id}/share',
@@ -72,7 +72,13 @@ app.http('projectShare', {
     const link = String(body.link ?? 'upload') as ShareLinkKind;
     if (!Object.hasOwn(SHARE_FIELDS, link)) throw new HttpError(400, 'link must be upload or pay');
     const f = SHARE_FIELDS[link];
-    const patch: Record<string, unknown> =
+    // The single "Project share link" (upload) also governs the legacy payment-request alias.
+    const unified = link === 'upload';
+    const patch: Record<string, unknown> = unified
+      ? action === 'regenerate' ? { shareToken: newShareToken(), shareEnabled: true, payToken: null, payEnabled: false }
+        : action === 'disable' ? { shareEnabled: false, payEnabled: false }
+          : action === 'enable' && prev.shareToken ? { shareEnabled: true, payEnabled: !!prev.payToken } : {}
+      :
       action === 'regenerate' ? { [f.token]: newShareToken(), [f.enabled]: true }
         : action === 'disable' ? { [f.enabled]: false }
           : action === 'enable' && prev[f.token] ? { [f.enabled]: true } : {};

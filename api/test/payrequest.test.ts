@@ -65,10 +65,9 @@ async function newProject(name: string, members: string[] = []) {
 describe('payment request link', () => {
   it('creates an unpaid bill needing review with the payee details', async () => {
     const a = await newProject('Alpha', ['eng1']);
-    expect(a.payToken).toMatch(/^[A-Za-z0-9_-]{32}$/);
-    expect(a.payToken).not.toBe(a.shareToken);
-    expect((await call('payRequestProject', { params: { token: a.payToken } })).body).toEqual({ name: 'Alpha' });
-    const r = await call('payRequestSubmit', { method: 'POST', params: { token: a.payToken }, form: payForm({ requesterName: 'Site sup', requesterPhone: '9000000001' }), ip: '3.0.0.1' });
+    expect(a.payToken).toBeUndefined();
+    expect((await call('payRequestProject', { params: { token: a.shareToken } })).body).toEqual({ name: 'Alpha' });
+    const r = await call('payRequestSubmit', { method: 'POST', params: { token: a.shareToken }, form: payForm({ requesterName: 'Site sup', requesterPhone: '9000000001' }), ip: '3.0.0.1' });
     expect(r.status).toBe(201);
     const bills = (await call('entityCollection', { user: 'eng1', params: { type: 'bill' }, query: { project: a.id } })).body.items;
     expect(bills).toHaveLength(1);
@@ -79,30 +78,28 @@ describe('payment request link', () => {
     });
   });
 
-  it('upload and pay links are separate; regenerate / disable work per link', async () => {
+  it('one project link serves both flows; the old pay token is an alias revoked by regenerate', async () => {
     const a = await newProject('Alpha');
-    expect((await call('payRequestProject', { params: { token: a.shareToken } })).status).toBe(404);
-    expect((await call('guestProject', { params: { token: a.payToken } })).status).toBe(404);
-    const regen = await call('projectShare', { method: 'POST', user: 'admin1', params: { id: a.id }, body: { action: 'regenerate', link: 'pay' } });
-    expect(regen.body.shareToken).toBe(a.shareToken);
-    expect((await call('payRequestProject', { params: { token: a.payToken } })).status).toBe(404);
-    expect((await call('payRequestProject', { params: { token: regen.body.payToken } })).status).toBe(200);
-    await call('projectShare', { method: 'POST', user: 'admin1', params: { id: a.id }, body: { action: 'disable', link: 'pay' } });
-    expect((await call('payRequestSubmit', { method: 'POST', params: { token: regen.body.payToken }, form: payForm() })).status).toBe(404);
-    expect((await call('guestProject', { params: { token: a.shareToken } })).status).toBe(200);
-    expect((await call('projectShare', { method: 'POST', user: 'admin1', params: { id: a.id }, body: { action: 'enable', link: 'nope' } })).status).toBe(400);
-    expect((await call('projectShare', { method: 'POST', user: 'eng1', params: { id: a.id }, body: { action: 'regenerate', link: 'pay' } })).status).toBe(403);
-  });
-
-  it('older projects without a pay token have no pay link until an admin creates one', async () => {
-    const a = await newProject('Old');
     const s = getStore();
-    const { payToken: _t, payEnabled: _e, ...rest } = (await s.get('project', a.id))!;
-    await s.put(rest as any);
-    expect((await call('projectShare', { method: 'POST', user: 'admin1', params: { id: a.id }, body: { action: 'enable', link: 'pay' } })).status).toBe(400);
-    const created = await call('projectShare', { method: 'POST', user: 'admin1', params: { id: a.id }, body: { action: 'regenerate', link: 'pay' } });
-    expect(created.body.payEnabled).toBe(true);
-    expect((await call('payRequestProject', { params: { token: created.body.payToken } })).status).toBe(200);
+    await s.put({ ...(await s.get('project', a.id))!, payToken: 'p'.repeat(32), payEnabled: true });
+    for (const token of [a.shareToken, 'p'.repeat(32)]) {
+      expect((await call('guestProject', { params: { token } })).status).toBe(200);
+      expect((await call('payRequestProject', { params: { token } })).status).toBe(200);
+    }
+    await call('projectShare', { method: 'POST', user: 'admin1', params: { id: a.id }, body: { action: 'disable' } });
+    for (const token of [a.shareToken, 'p'.repeat(32)]) {
+      expect((await call('guestProject', { params: { token } })).status).toBe(404);
+    }
+    await call('projectShare', { method: 'POST', user: 'admin1', params: { id: a.id }, body: { action: 'enable' } });
+    expect((await call('payRequestProject', { params: { token: 'p'.repeat(32) } })).status).toBe(200);
+    const regen = await call('projectShare', { method: 'POST', user: 'admin1', params: { id: a.id }, body: { action: 'regenerate' } });
+    expect(regen.body.shareToken).not.toBe(a.shareToken);
+    for (const token of [a.shareToken, 'p'.repeat(32)]) {
+      expect((await call('payRequestSubmit', { method: 'POST', params: { token }, form: payForm() })).status).toBe(404);
+    }
+    expect((await call('payRequestSubmit', { method: 'POST', params: { token: regen.body.shareToken }, form: payForm(), ip: '4.4.4.4' })).status).toBe(201);
+    expect((await call('projectShare', { method: 'POST', user: 'admin1', params: { id: a.id }, body: { action: 'enable', link: 'nope' } })).status).toBe(400);
+    expect((await call('projectShare', { method: 'POST', user: 'eng1', params: { id: a.id }, body: { action: 'regenerate' } })).status).toBe(403);
   });
 
   it('hides the pay token from non-admins', async () => {
@@ -136,7 +133,7 @@ describe('payment request link', () => {
 
   it('QR mode needs a real image, stored in the project and visible only to its members', async () => {
     const a = await newProject('Alpha', ['eng1']);
-    const t = { token: a.payToken };
+    const t = { token: a.shareToken };
     expect((await call('payRequestSubmit', { method: 'POST', params: t, form: payForm({ mode: 'QR' }), ip: '4.0.0.1' })).status).toBe(400);
     expect((await call('payRequestSubmit', { method: 'POST', params: t, form: payForm({ mode: 'QR', qr: PDF }), ip: '4.0.0.2' })).status).toBe(415);
     expect((await call('payRequestSubmit', { method: 'POST', params: t, form: payForm({ mode: 'QR', qr: PNG }), ip: '4.0.0.3' })).status).toBe(201);
@@ -148,7 +145,7 @@ describe('payment request link', () => {
 
   it('rate-limits per IP', async () => {
     const a = await newProject('Alpha');
-    const post = () => call('payRequestSubmit', { method: 'POST', params: { token: a.payToken }, form: payForm(), ip: '5.5.5.5' });
+    const post = () => call('payRequestSubmit', { method: 'POST', params: { token: a.shareToken }, form: payForm(), ip: '5.5.5.5' });
     for (let i = 0; i < 5; i++) expect((await post()).status).toBe(201);
     expect((await post()).status).toBe(429);
   });
@@ -156,7 +153,7 @@ describe('payment request link', () => {
 
 describe('recording payments', () => {
   async function billIn(projectId: string, body: Record<string, unknown>) {
-    const r = await call('entityCollection', { method: 'POST', user: 'admin1', params: { type: 'bill' }, query: { project: projectId }, body: { category: 'Cement', ...body } });
+    const r = await call('entityCollection', { method: 'POST', user: 'admin1', params: { type: 'bill' }, query: { project: projectId }, body: { payee: 'Test payee', category: 'Cement', ...body } });
     expect(r.status).toBe(201);
     return r.body;
   }
@@ -223,7 +220,7 @@ describe('team payment requests and pay details on any bill', () => {
     const a = await newProject('Alpha', ['eng1']);
     const b = await newProject('Beta', ['eng1']);
     const create = (body: Record<string, unknown>, project = a.id) =>
-      call('entityCollection', { method: 'POST', user: 'eng1', params: { type: 'bill' }, query: { project }, body: { category: 'Cement', total: 900, status: 'Unpaid', ...body } });
+      call('entityCollection', { method: 'POST', user: 'eng1', params: { type: 'bill' }, query: { project }, body: { payee: 'Test payee', category: 'Cement', total: 900, status: 'Unpaid', ...body } });
     const update = (id: string, body: Record<string, unknown>) =>
       call('entityItem', { method: 'PUT', user: 'eng1', params: { type: 'bill', id }, query: { project: a.id }, body });
 

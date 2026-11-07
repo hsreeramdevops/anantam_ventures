@@ -29,14 +29,16 @@ beforeEach(() => {
 describe('validate', () => {
   const bill = entityDef('bill')!;
   it('coerces money, drops unknown fields', () => {
-    const v = validate(bill, { total: '1,234.567', category: 'Cement', hacker: 'x' });
+    const v = validate(bill, { payee: 'P', total: '1,234.567', category: 'Cement', hacker: 'x' });
     expect(v.total).toBe(1234.57);
     expect(v).not.toHaveProperty('hacker');
   });
   it('rejects bad select / missing required / bad dates', () => {
     expect(() => validate(bill, { total: 1, category: 'Nope' })).toThrow(ValidationError);
-    expect(() => validate(bill, { category: 'Cement' })).toThrow(/Total is required/);
-    expect(() => validate(bill, { total: 1, category: 'Cement', dueDate: '05/11/2026' })).toThrow(/YYYY-MM-DD/);
+    expect(() => validate(bill, { payee: 'P', category: 'Cement' })).toThrow(/Total is required/);
+    expect(() => validate(bill, { total: 1, category: 'Cement' })).toThrow(/Whom to pay is required/);
+    expect(validate(bill, { paidAmount: 5 }, true)).toEqual({ paidAmount: 5 });
+    expect(() => validate(bill, { payee: 'P', total: 1, category: 'Cement', dueDate: '05/11/2026' })).toThrow(/YYYY-MM-DD/);
   });
 });
 
@@ -94,7 +96,7 @@ describe('OTP login', () => {
 
 describe('service rules', () => {
   it('derives bill payment status', async () => {
-    const b = await createEntity(admin, 'bill', { total: 1000, category: 'Cement' }, {}, 'p1');
+    const b = await createEntity(admin, 'bill', { payee: 'P', total: 1000, category: 'Cement' }, {}, 'p1');
     expect(b.status).toBe('Unpaid');
     const p = await updateEntity(admin, 'bill', b.id, { paidAmount: 400 }, 'p1');
     expect(p.status).toBe('Partially Paid');

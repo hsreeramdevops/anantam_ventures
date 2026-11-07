@@ -62,7 +62,7 @@ async function payRequest(project: any, extra: Record<string, string> = {}) {
   const fd = new FormData();
   for (const [k, v] of Object.entries({ payee: 'Ramesh', amount: '25400', purpose: 'weekly labour', mode: 'Bank',
     accountHolder: 'Ramesh K', accountNumber: '123456789012', ifsc: 'SBIN0001234', ...extra })) fd.append(k, v);
-  const r = await call('payRequestSubmit', { method: 'POST', params: { token: project.payToken }, form: fd, ip: `7.7.7.${Math.floor(Math.random() * 250)}` });
+  const r = await call('payRequestSubmit', { method: 'POST', params: { token: project.shareToken }, form: fd, ip: `7.7.7.${Math.floor(Math.random() * 250)}` });
   expect(r.status).toBe(201);
   const bills = (await call('entityCollection', { user: 'admin1', params: { type: 'bill' }, query: { project: project.id } })).body.items;
   const fresh = bills.find((b: any) => !seen.has(b.id));
@@ -87,7 +87,7 @@ describe('bill status emails', () => {
     expect(m[0].text).toContain('••••9012');
     expect(m[0].text).not.toContain('123456789012');
     expect(m[0].html).not.toContain('123456789012');
-    expect(m[0].text).not.toContain('/bills?');
+    expect(m[0].text).not.toContain('/bills/');
     expect(m[0].text).toContain('/api/public/unsubscribe?t=');
 
     await pay('admin1', a.id, bill.id, {});
@@ -105,7 +105,7 @@ describe('bill status emails', () => {
     const a = await newProject('Alpha');
     const fd = new FormData();
     for (const [k, v] of Object.entries({ payee: 'R', amount: '10', mode: 'Cash', requesterEmail: 'not-an-email' })) fd.append(k, v);
-    expect((await call('payRequestSubmit', { method: 'POST', params: { token: a.payToken }, form: fd, ip: '8.8.8.1' })).status).toBe(400);
+    expect((await call('payRequestSubmit', { method: 'POST', params: { token: a.shareToken }, form: fd, ip: '8.8.8.1' })).status).toBe(400);
     const bill = await payRequest(a);
     await pay('admin1', a.id, bill.id, {});
     expect(devOutbox).toHaveLength(0);
@@ -114,7 +114,7 @@ describe('bill status emails', () => {
   it('emails the team member who created the bill (with a link), never the person who changed it, honours opt-out', async () => {
     const a = await newProject('Alpha', ['acct1']);
     const r = await call('entityCollection', { method: 'POST', user: 'acct1', params: { type: 'bill' }, query: { project: a.id },
-      body: { vendorName: 'Cement Co', total: 1000, category: 'Miscellaneous', status: 'Unpaid' } });
+      body: { payee: 'Test payee', vendorName: 'Cement Co', total: 1000, category: 'Miscellaneous', status: 'Unpaid' } });
     expect(r.status).toBe(201);
     await pay('acct1', a.id, r.body.id, { amount: 100 }); // own change
     expect(devOutbox).toHaveLength(0);
@@ -123,7 +123,7 @@ describe('bill status emails', () => {
     await call('entityItem', { method: 'PUT', user: 'admin1', params: { type: 'bill', id: r.body.id }, query: { project: a.id }, body: { status: 'Unpaid' } });
     const m = mails('acct1@x.com');
     expect(m).toHaveLength(1);
-    expect(m[0].text).toContain(`/bills?tab=all&project=${a.id}&open=${r.body.id}`);
+    expect(m[0].text).toContain(`/bills/${r.body.id}?project=${a.id}`);
 
     expect((await call('billEmailPref', { user: 'acct1' })).body.billStatusEmails).toBe(true);
     expect((await call('billEmailPref', { method: 'PUT', user: 'acct1', body: { billStatusEmails: false } })).body.billStatusEmails).toBe(false);
@@ -174,7 +174,7 @@ describe('bill status emails', () => {
     const a = await newProject('Alpha');
     const fd = new FormData();
     fd.append('file', new Blob([Buffer.from('%PDF-1.4 x')]), 'b.pdf');
-    for (const [k, v] of Object.entries({ name: 'Guest', remarks: 'cement', email: 'g@example.com' })) fd.append(k, v);
+    for (const [k, v] of Object.entries({ payee: 'Cement Co', name: 'Guest', remarks: 'cement', email: 'g@example.com' })) fd.append(k, v);
     expect((await call('guestUpload', { method: 'POST', params: { token: a.shareToken }, form: fd, ip: '6.6.6.6' })).status).toBe(201);
     const [b] = (await call('entityCollection', { user: 'admin1', params: { type: 'bill' }, query: { project: a.id } })).body.items;
     expect(b.submitterEmail).toBe('g@example.com');
@@ -189,6 +189,6 @@ describe('bill status emails', () => {
     await pay('admin1', a.id, r.body.id, {});
     const m = mails('acct1@x.com');
     expect(m).toHaveLength(1);
-    expect(m[0].text).toContain('/bills?');
+    expect(m[0].text).toContain('/bills/');
   });
 });

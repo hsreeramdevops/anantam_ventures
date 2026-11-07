@@ -16,6 +16,8 @@ export interface FieldDef {
   /** Upload folder for file fields. */
   folder?: 'bills' | 'photos' | 'documents';
   readonly?: boolean;
+  /** List/detail views show this field's value when the field itself is empty (older records). */
+  fallback?: string;
 }
 
 export interface EntityDef {
@@ -51,8 +53,9 @@ export const ENTITIES: EntityDef[] = [
     type: 'bill', label: 'Bill', plural: 'Bills & Expenses', group: 'Finance', titleField: 'billNumber',
     write: OPS, read: ALL,
     fields: [
+      { name: 'payee', label: 'Whom to pay', type: 'text', required: true, list: true, fallback: 'vendorName' },
       { name: 'vendorId', label: 'Vendor', type: 'ref', ref: 'vendor' },
-      { name: 'vendorName', label: 'Vendor name', type: 'text', list: true },
+      { name: 'vendorName', label: 'Vendor name', type: 'text' },
       { name: 'billNumber', label: 'Bill #', type: 'text', list: true },
       { name: 'billDate', label: 'Bill date', type: 'date', list: true },
       { name: 'dueDate', label: 'Due date', type: 'date', list: true },

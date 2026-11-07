@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useEntity } from '../auth';
 import { money } from '../format';
@@ -37,6 +38,11 @@ export default function BillsPage() {
   const [reloadKey, setReloadKey] = useState(0);
   const [paying, setPaying] = useState<Doc | null>(null);
   const [requesting, setRequesting] = useState(false);
+  const nav = useNavigate();
+  const [search] = useSearchParams();
+  const openId = search.get('open');
+  // Older alert links (?open=<id>) go to the bill's own page.
+  useEffect(() => { if (openId) nav(`/bills/${encodeURIComponent(openId)}`, { replace: true }); }, [openId, nav]);
 
   async function upload(files: FileList | null, openEdit: (d: Doc) => void) {
     if (!files?.length) return;
@@ -122,9 +128,7 @@ export default function BillsPage() {
         )}
         rowActions={(d, reload) => (
           <>
-            {payToOf(d) && !(def?.canWrite && d.status !== 'Paid') && (
-              <button className="btn small" onClick={() => setPaying(d)}>Pay details</button>
-            )}
+            <button className="btn small primary" onClick={() => nav(`/bills/${encodeURIComponent(d.id)}`)}>View</button>
             {def?.canWrite && d.needsReview === true && (
               <button className="btn small" onClick={async () => { await api.update('bill', d.id, { needsReview: false }); reload(); }}>Mark reviewed</button>
             )}

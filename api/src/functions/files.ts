@@ -48,6 +48,8 @@ app.http('fileDownload', {
       headers: {
         'Content-Type': f.contentType, 'Cache-Control': 'private, max-age=3600',
         'X-Content-Type-Options': 'nosniff', 'Content-Disposition': 'inline',
+        // Our own bill view may preview the file in an iframe; nobody else may frame it.
+        'X-Frame-Options': 'SAMEORIGIN', 'Content-Security-Policy': "frame-ancestors 'self'",
       },
     };
   }),

@@ -5,6 +5,20 @@ import { canRead, canWrite, createEntity, deleteEntity, getEntity, listEntities,
 import { requireProject } from '../projects';
 import { HttpError, json, readJson, route } from '../http';
 import { PayTo, payToFromJson } from './payrequest';
+import { blobProjectId, isValidBlobName } from '../files/blob';
+import { Doc } from '../store/types';
+
+/** A file field may only point at a file uploaded into this project (or keep its current value). */
+function checkFiles(type: string, body: Record<string, unknown>, projectId: string | null, prev: Doc | null = null) {
+  if (!projectId) return;
+  for (const f of entityDef(type)?.fields ?? []) {
+    const v = body[f.name];
+    if (f.type !== 'file' || v === undefined || v === null || v === '' || v === prev?.[f.name]) continue;
+    if (typeof v !== 'string' || !isValidBlobName(v) || blobProjectId(v) !== projectId) {
+      throw new HttpError(400, `${f.label}: upload the file to this project first`);
+    }
+  }
+}
 
 /** Bills carry optional payee payment details (`payTo`), validated separately from the schema fields. */
 function billExtra(type: string, body: Record<string, unknown>, projectId: string | null, prev: PayTo | null = null) {
@@ -32,6 +46,7 @@ app.http('entityCollection', {
     const projectId = await projectFor(req, user!, type);
     if (req.method === 'POST') {
       const body = await readJson(req);
+      checkFiles(type, body, projectId);
       return json(await createEntity(user!, type, body, billExtra(type, body, projectId), projectId), 201);
     }
     const items = await listEntities(type, projectId);
@@ -47,7 +62,9 @@ app.http('entityItem', {
     const projectId = await projectFor(req, user!, type);
     if (req.method === 'PUT') {
       const body = await readJson(req);
-      const prev = type === 'bill' && 'payTo' in body ? await getEntity(type, id, projectId) : null;
+      const hasFile = entityDef(type)!.fields.some((f) => f.type === 'file' && f.name in body);
+      const prev = (type === 'bill' && 'payTo' in body) || hasFile ? await getEntity(type, id, projectId) : null;
+      checkFiles(type, body, projectId, prev);
       const extra = billExtra(type, body, projectId, (prev?.payTo as PayTo | undefined) ?? null);
       return json(await updateEntity(user!, type, id, body, projectId, extra));
     }

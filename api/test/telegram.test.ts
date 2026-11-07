@@ -88,7 +88,7 @@ describe('telegram (unconfigured)', () => {
     expect(st.body.projects.find((x: any) => x.id === p.id)).toEqual({ id: p.id, name: 'Alpha', events: ['payRequest', 'guestUpload'] });
     expect((await call('telegramLink', { method: 'POST', user: 'admin1' })).status).toBe(409);
     expect((await webhook('/stop')).status).toBe(404);
-    await call('entityCollection', { method: 'POST', user: 'eng1', params: { type: 'bill' }, query: { project: p.id }, body: { vendorName: 'X', total: 10, category: 'Miscellaneous' } });
+    await call('entityCollection', { method: 'POST', user: 'eng1', params: { type: 'bill' }, query: { project: p.id }, body: { payee: 'Test payee', vendorName: 'X', total: 10, category: 'Miscellaneous' } });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
@@ -170,12 +170,12 @@ describe('telegram notifications', () => {
     await call('telegramSubscriptions', { method: 'PUT', user: 'admin2', body: { subs: { [a.id]: ['billAdded'] } } });
     fetchMock.mockClear();
 
-    const r = await call('entityCollection', { method: 'POST', user: 'eng1', params: { type: 'bill' }, query: { project: a.id }, body: { vendorName: 'Cement Co', total: 5000, status: 'Unpaid', category: 'Miscellaneous' } });
+    const r = await call('entityCollection', { method: 'POST', user: 'eng1', params: { type: 'bill' }, query: { project: a.id }, body: { payee: 'Test payee', vendorName: 'Cement Co', total: 5000, status: 'Unpaid', category: 'Miscellaneous' } });
     expect(r.status).toBe(201);
     expect(sent().map((m) => m.chat_id)).toEqual(['102']); // eng1 is the actor; admin1 isn't subscribed to billAdded
     expect(sent()[0].text).toContain('Cement Co');
     expect(sent()[0].text).toContain('₹5,000');
-    expect(sent()[0].text).toContain(`https://www.anantamventures.com/bills?tab=all&project=${a.id}&open=${r.body.id}`);
+    expect(sent()[0].text).toContain(`https://www.anantamventures.com/bills/${r.body.id}?project=${a.id}`);
 
     fetchMock.mockClear();
     await call('billPayment', { method: 'POST', user: 'admin1', params: { id: r.body.id }, query: { project: a.id }, body: { amount: 2000, mode: 'UPI' } });
@@ -190,7 +190,7 @@ describe('telegram notifications', () => {
     // Subscription saved while eng1 had access; access later removed.
     await getStore().put({ ...(await getStore().get('tglink', 'eng1'))!, subs: { [a.id]: ['billAdded'] } });
     fetchMock.mockClear();
-    await call('entityCollection', { method: 'POST', user: 'admin1', params: { type: 'bill' }, query: { project: a.id }, body: { vendorName: 'X', total: 1, category: 'Miscellaneous' } });
+    await call('entityCollection', { method: 'POST', user: 'admin1', params: { type: 'bill' }, query: { project: a.id }, body: { payee: 'Test payee', vendorName: 'X', total: 1, category: 'Miscellaneous' } });
     expect(sent()).toHaveLength(0);
   });
 
@@ -201,7 +201,7 @@ describe('telegram notifications', () => {
     fetchMock.mockImplementation(async () => { throw new Error('network down'); });
     const fd = new FormData();
     for (const [k, v] of Object.entries({ payee: 'Ramesh', amount: '25400', purpose: 'weekly labour', mode: 'Bank', accountHolder: 'Ramesh K', accountNumber: '123456789012', ifsc: 'SBIN0001234' })) fd.append(k, v);
-    const r = await call('payRequestSubmit', { method: 'POST', params: { token: a.payToken }, form: fd, ip: '9.9.9.9' });
+    const r = await call('payRequestSubmit', { method: 'POST', params: { token: a.shareToken }, form: fd, ip: '9.9.9.9' });
     expect(r.status).toBe(201);
     const msg = sent()[0];
     expect(msg.chat_id).toBe('101');

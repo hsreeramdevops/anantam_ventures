@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './auth';
 import { useProject } from './project';
-import GuestUpload from './pages/GuestUpload';
-import PaymentRequest from './pages/PaymentRequest';
+import PublicLanding from './pages/PublicLanding';
+import BillView from './pages/BillView';
 import Projects from './pages/Projects';
 import Notifications from './pages/Notifications';
 import BillsPage from './pages/BillsPage';
@@ -29,9 +29,9 @@ export default function App() {
     if (wantProject && wantProject !== current?.id && projects.some((p) => p.id === wantProject)) select(wantProject);
   }, [wantProject, projects, current?.id, select]);
 
-  // Public guest upload page: no login, nothing else reachable.
-  if (loc.pathname.startsWith('/u/')) return <Routes><Route path="/u/:token" element={<GuestUpload />} /></Routes>;
-  if (loc.pathname.startsWith('/pay/')) return <Routes><Route path="/pay/:token" element={<PaymentRequest />} /></Routes>;
+  // Public project link: no login, nothing else reachable. Older /pay/ links open on "Request a payment".
+  if (loc.pathname.startsWith('/u/')) return <Routes><Route path="/u/:token" element={<PublicLanding />} /></Routes>;
+  if (loc.pathname.startsWith('/pay/')) return <Routes><Route path="/pay/:token" element={<PublicLanding initial="pay" />} /></Routes>;
   if (loading) return <div className="center muted">Loading…</div>;
   if (!user) return <Login />;
   if (projectsLoading) return <div className="center muted">Loading projects…</div>;
@@ -73,6 +73,7 @@ export default function App() {
           <Route path="/projects" element={<Projects />} />
           <Route path="/" element={<Dashboard />} />
           <Route path="/bills" element={<BillsPage />} />
+          <Route path="/bills/:id" element={<BillView />} />
           <Route path="/e/:type" element={<EntityPage />} />
           <Route path="/reports/stock" element={<StockReport />} />
           <Route path="/reports/wages" element={<WagesReport />} />

@@ -19,7 +19,7 @@ export interface PayTo {
 export const outstanding = (d: Doc) => Math.max(0, Math.round((Number(d.total ?? 0) - Number(d.paidAmount ?? 0)) * 100) / 100);
 export const payToOf = (d: Doc) => (d.payTo && typeof d.payTo === 'object' ? d.payTo as PayTo : null);
 
-function CopyRow({ label, value }: { label: string; value: string }) {
+export function CopyRow({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="copy-row">
@@ -69,8 +69,10 @@ export function PayToDetails({ bill }: { bill: Doc }) {
 }
 
 /** Payment details + "record a payment" form (full or partial). */
-export default function PayDialog({ bill, canRecord, onClose, onSaved }: {
+export default function PayDialog({ bill, canRecord, onClose, onSaved, hideDetails = false }: {
   bill: Doc; canRecord: boolean; onClose: () => void; onSaved: () => void;
+  /** The bill view already shows how to pay and the history; just record the payment. */
+  hideDetails?: boolean;
 }) {
   const due = outstanding(bill);
   const p = payToOf(bill);
@@ -95,13 +97,13 @@ export default function PayDialog({ bill, canRecord, onClose, onSaved }: {
   return (
     <div className="modal-bg" onClick={onClose}>
       <form className="modal narrow" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
-        <h2>{String(bill.vendorName ?? bill.payee ?? 'Bill')}</h2>
+        <h2>{String(bill.payee ?? bill.vendorName ?? 'Bill')}</h2>
         <p className="small">
           Total {money(bill.total)} · Paid {money(bill.paidAmount ?? 0)} · <b>Balance {money(due)}</b>{' '}
           <span className={`pill ${String(bill.status ?? '').replace(/\s/g, '-').toLowerCase()}`}>{String(bill.status ?? '')}</span>
         </p>
-        <PayToDetails bill={bill} />
-        {history.length > 0 && (
+        {!hideDetails && <PayToDetails bill={bill} />}
+        {!hideDetails && history.length > 0 && (
           <ul className="list small">
             {history.map((h, i) => <li key={i}><span>{h.date} · {h.mode ?? ''} · {h.by ?? ''}</span><b>{money(h.amount)}</b></li>)}
           </ul>

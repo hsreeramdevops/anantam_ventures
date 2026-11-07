@@ -34,6 +34,14 @@
         "Cache-Control": "no-store",
         "X-Robots-Tag": "noindex, nofollow"
       }
+    },
+    {
+      "route": "/api/files/*",
+      "headers": {
+        "X-Frame-Options": "SAMEORIGIN",
+        "Content-Security-Policy": "frame-ancestors 'self'",
+        "Cache-Control": "private, max-age=3600"
+      }
     }
   ],
   "navigationFallback": {

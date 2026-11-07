@@ -194,7 +194,7 @@ export function payToSummary(p: any): string | null {
 }
 
 export const billLink = (bill: Doc) =>
-  `${config.publicUrl}/bills?tab=all&project=${encodeURIComponent(String(bill.projectId ?? ''))}&open=${encodeURIComponent(bill.id)}`;
+  `${config.publicUrl}/bills/${encodeURIComponent(bill.id)}?project=${encodeURIComponent(String(bill.projectId ?? ''))}`;
 
 export function billMessage(event: TgEvent, bill: Doc, projectName: string, actorName?: string | null): string {
   const lines: string[] = [];
@@ -203,7 +203,8 @@ export function billMessage(event: TgEvent, bill: Doc, projectName: string, acto
     lines.push(event === 'guestUpload' ? `🧾 New guest bill · ${projectName}`
       : event === 'billAdded' ? `🧾 New bill · ${projectName}`
         : `${bill.status === 'Paid' ? '✅ Bill paid' : '🟡 Bill part-paid'} · ${projectName}`);
-    if (bill.vendorName) lines.push(`Vendor: ${clip(bill.vendorName, 100)}`);
+    if (bill.payee) lines.push(`Pay to: ${clip(bill.payee, 100)}`);
+    if (bill.vendorName && bill.vendorName !== bill.payee) lines.push(`Vendor: ${clip(bill.vendorName, 100)}`);
   }
   if (event === 'billPaid') {
     const balance = Math.max(0, Number(bill.total ?? 0) - Number(bill.paidAmount ?? 0));

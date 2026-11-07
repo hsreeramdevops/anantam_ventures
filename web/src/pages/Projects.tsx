@@ -6,12 +6,6 @@ import { useProject } from '../project';
 import { Doc, Project } from '../types';
 
 export const guestLink = (p: Project) => `${window.location.origin}/u/${p.shareToken}`;
-export const payLink = (p: Project) => `${window.location.origin}/pay/${p.payToken}`;
-
-const LINKS = {
-  upload: { title: 'Guest bill upload link', url: guestLink, token: (p: Project) => p.shareToken, on: (p: Project) => !!p.shareEnabled },
-  pay: { title: 'Raise a payment request link', url: payLink, token: (p: Project) => p.payToken, on: (p: Project) => !!p.payEnabled && !!p.payToken },
-};
 
 /** Project list + picker. Admins can create/edit projects, manage members and the guest upload link. */
 export default function Projects() {
@@ -44,8 +38,7 @@ export default function Projects() {
             <button className={`btn open-project ${current?.id === p.id ? 'current' : 'primary'}`} onClick={() => open(p)}>
               {current?.id === p.id ? '✓ Current project · Open' : 'Open project →'}
             </button>
-            {canManage && <ShareLink project={p} kind="upload" onChange={reload} />}
-            {canManage && <ShareLink project={p} kind="pay" onChange={reload} />}
+            {canManage && <ShareLink project={p} onChange={reload} />}
             {canManage && <div className="row wrap"><button className="btn small" onClick={() => setEditing(p)}>Edit / members</button></div>}
           </div>
         ))}
@@ -56,14 +49,18 @@ export default function Projects() {
   );
 }
 
-function ShareLink({ project, kind, onChange }: { project: Project; kind: keyof typeof LINKS; onChange: () => void }) {
+/**
+ * The one public project link: guests choose "Upload a bill" or "Request a payment". An older payment-request
+ * link keeps working as an alias until "New link"; Disable / Enable cover both.
+ */
+function ShareLink({ project, onChange }: { project: Project; onChange: () => void }) {
   const [msg, setMsg] = useState('');
-  const l = LINKS[kind];
-  const on = l.on(project);
-  const hasToken = !!l.token(project);
+  const l = { title: 'Project share link', url: guestLink };
+  const on = !!project.shareEnabled;
+  const hasToken = !!project.shareToken;
   const act = async (action: 'regenerate' | 'disable' | 'enable') => {
     if (action === 'regenerate' && hasToken && !confirm('Create a new link? The current link will stop working immediately.')) return;
-    try { await api.post(`/api/projects/${project.id}/share`, { action, link: kind }); setMsg(''); onChange(); } catch (x: any) { setMsg(x.message); }
+    try { await api.post(`/api/projects/${project.id}/share`, { action, link: 'upload' }); setMsg(''); onChange(); } catch (x: any) { setMsg(x.message); }
   };
   const copy = async () => {
     try { await navigator.clipboard.writeText(l.url(project)); setMsg('Link copied'); } catch { setMsg(l.url(project)); }
@@ -79,6 +76,8 @@ function ShareLink({ project, kind, onChange }: { project: Project; kind: keyof 
           ? <button className="btn small danger" onClick={() => act('disable')}>Disable</button>
           : <button className="btn small ok" onClick={() => act('enable')}>Enable</button>)}
       </div>
+      <div className="muted small">Share on WhatsApp: people can upload a bill or request a payment, no login needed.
+        {project.payToken && project.payEnabled ? ' The older payment-request link still works until you create a new link.' : ''}</div>
       {msg && <div className="muted small">{msg}</div>}
     </div>
   );

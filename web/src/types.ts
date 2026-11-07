@@ -11,6 +11,8 @@ export interface FieldDef {
   list?: boolean;
   folder?: 'bills' | 'photos' | 'documents';
   readonly?: boolean;
+  /** Show this field's value when the field itself is empty (older records). */
+  fallback?: string;
 }
 
 export interface EntityDef {

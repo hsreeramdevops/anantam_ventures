@@ -14,7 +14,10 @@ interface Props {
 }
 
 export default function EntityForm({ def, initial, refs, refLabel, onSaved, onCancel }: Props) {
-  const [values, setValues] = useState<Record<string, unknown>>(() => ({ ...initial }));
+  // Older bills have no "Whom to pay"; start from the vendor name so saving does not trip the required check.
+  const [values, setValues] = useState<Record<string, unknown>>(() => ({
+    ...initial, ...(def.type === 'bill' && !initial.payee && initial.vendorName ? { payee: initial.vendorName } : {}),
+  }));
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const set = (k: string, v: unknown) => setValues((s) => ({ ...s, [k]: v }));

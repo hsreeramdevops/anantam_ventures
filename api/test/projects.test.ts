@@ -41,6 +41,7 @@ async function call(name: string, opts: {
 const guestForm = (o: { name?: string; remarks?: string; phone?: string; file?: Buffer } = {}) => {
   const fd = new FormData();
   fd.append('file', new Blob([o.file ?? PDF]), 'bill.pdf');
+  fd.append('payee', 'Raju Traders');
   fd.append('name', o.name ?? 'Raju');
   fd.append('remarks', o.remarks ?? 'Cement for slab');
   if (o.phone) fd.append('phone', o.phone);
@@ -116,7 +117,7 @@ describe('project access control', () => {
     // Cross-project references are rejected.
     const bill = await call('entityCollection', {
       method: 'POST', user: 'admin1', params: { type: 'bill' }, query: { project: b.id },
-      body: { total: 5, category: 'Cement', vendorId: va.body.id },
+      body: { payee: 'P', total: 5, category: 'Cement', vendorId: va.body.id },
     });
     expect(bill.status).toBe(400);
     expect(bill.body.error).toMatch(/not found in this project/);
@@ -156,8 +157,8 @@ describe('project access control', () => {
   it('reports are per project', async () => {
     const a = await newProject('Alpha');
     const b = await newProject('Beta');
-    await call('entityCollection', { method: 'POST', user: 'admin1', params: { type: 'bill' }, query: { project: a.id }, body: { total: 100, category: 'Cement' } });
-    await call('entityCollection', { method: 'POST', user: 'admin1', params: { type: 'bill' }, query: { project: b.id }, body: { total: 7, category: 'Cement' } });
+    await call('entityCollection', { method: 'POST', user: 'admin1', params: { type: 'bill' }, query: { project: a.id }, body: { payee: 'Test payee', total: 100, category: 'Cement' } });
+    await call('entityCollection', { method: 'POST', user: 'admin1', params: { type: 'bill' }, query: { project: b.id }, body: { payee: 'Test payee', total: 7, category: 'Cement' } });
     const d = await call('dashboard', { user: 'admin1', query: { project: a.id } });
     expect(d.body.spendByCategory).toEqual([{ name: 'Cement', value: 100 }]);
     expect((await call('dashboard', { user: 'eng1', query: { project: a.id } })).status).toBe(404);
@@ -171,7 +172,7 @@ describe('guest upload link', () => {
     expect(info.body).toEqual({ name: 'Alpha' });
     const r = await call('guestUpload', { method: 'POST', params: { token: a.shareToken }, form: guestForm({ phone: '+91 98765 43210' }), ip: '1.1.1.1' });
     expect(r.status).toBe(201);
-    expect(r.body).toEqual({ ok: true, project: 'Alpha' });
+    expect(r.body).toMatchObject({ ok: true, project: 'Alpha', payee: 'Raju Traders' });
     const bills = await getStore().list('bill');
     expect(bills).toHaveLength(1);
     expect(bills[0]).toMatchObject({
@@ -231,5 +232,55 @@ describe('guest upload link', () => {
     expect(clientIp(req({ 'x-forwarded-for': '1.2.3.4:5555, 10.0.0.1' }))).toBe('1.2.3.4');
     expect(clientIp(req({ 'x-azure-clientip': '5.6.7.8', 'x-forwarded-for': '1.2.3.4' }))).toBe('5.6.7.8');
     expect(clientIp(req({}))).toBe('unknown');
+  });
+});
+
+describe('guest two-step upload and bill files', () => {
+  const fileForm = () => { const fd = new FormData(); fd.append('file', new Blob([PDF]), 'bill.pdf'); return fd; };
+  const details = (draft: string, o: Record<string, string> = {}) => {
+    const fd = new FormData();
+    for (const [k, v] of Object.entries({ draft, payee: 'Raju Traders', name: 'Raju', remarks: 'Cement', ...o })) fd.append(k, v);
+    return fd;
+  };
+
+  it('reads the bill into a draft, then creates the bill with the confirmed payee, once', async () => {
+    const a = await newProject('Alpha');
+    const r = await call('guestRead', { method: 'POST', params: { token: a.shareToken }, form: fileForm(), ip: '2.2.2.1' });
+    expect(r.status).toBe(201);
+    expect(r.body.draft).toMatch(/^[A-Za-z0-9_-]{32}$/);
+    expect(await getStore().list('bill')).toHaveLength(0);
+
+    expect((await call('guestUpload', { method: 'POST', params: { token: a.shareToken }, form: details(r.body.draft, { payee: '' }), ip: '2.2.2.1' })).body.error)
+      .toMatch(/Whom to pay is required/);
+    const ok = await call('guestUpload', { method: 'POST', params: { token: a.shareToken }, form: details(r.body.draft), ip: '2.2.2.1' });
+    expect(ok.status).toBe(201);
+    const [bill] = await getStore().list('bill');
+    expect(bill).toMatchObject({ projectId: a.id, payee: 'Raju Traders', source: 'guest', needsReview: true, remarks: 'Cement' });
+    expect(String(bill.file)).toMatch(new RegExp(`^p/${a.id}/bills/`));
+    // The draft is used up.
+    expect((await call('guestUpload', { method: 'POST', params: { token: a.shareToken }, form: details(r.body.draft), ip: '2.2.2.1' })).status).toBe(400);
+  });
+
+  it('a draft only works for its own project', async () => {
+    const a = await newProject('Alpha');
+    const b = await newProject('Beta');
+    const r = await call('guestRead', { method: 'POST', params: { token: a.shareToken }, form: fileForm(), ip: '2.2.2.2' });
+    expect((await call('guestUpload', { method: 'POST', params: { token: b.shareToken }, form: details(r.body.draft), ip: '2.2.2.2' })).status).toBe(400);
+    expect((await call('guestRead', { method: 'POST', params: { token: 'x'.repeat(32) }, form: fileForm(), ip: '2.2.2.3' })).status).toBe(404);
+  });
+
+  it('a bill file must belong to the same project', async () => {
+    const a = await newProject('Alpha');
+    const b = await newProject('Beta');
+    const create = (file: string) => call('entityCollection', {
+      method: 'POST', user: 'admin1', params: { type: 'bill' }, query: { project: a.id }, body: { payee: 'P', total: 1, category: 'Cement', file },
+    });
+    expect((await create(newBlobName('bills', 'x.pdf', b.id))).status).toBe(400);
+    expect((await create('../secret')).status).toBe(400);
+    const ok = await create(newBlobName('bills', 'x.pdf', a.id));
+    expect(ok.status).toBe(201);
+    const put = (file: string) => call('entityItem', { method: 'PUT', user: 'admin1', params: { type: 'bill', id: ok.body.id }, query: { project: a.id }, body: { file } });
+    expect((await put(newBlobName('bills', 'y.pdf', b.id))).status).toBe(400);
+    expect((await put(newBlobName('bills', 'y.pdf', a.id))).status).toBe(200);
   });
 });

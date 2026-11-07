@@ -84,6 +84,14 @@ export const SHARE_FIELDS: Record<ShareLinkKind, { token: string; enabled: strin
   pay: { token: 'payToken', enabled: 'payEnabled' },
 };
 
+/**
+ * The one public project link (/u/<token>, upload a bill or request a payment). The share token is
+ * canonical; a project's older payment-request token still works as an alias until the link is regenerated.
+ */
+export async function findProjectByPublicToken(token: string): Promise<Doc | null> {
+  return (await findProjectByShareToken(token, 'upload')) ?? findProjectByShareToken(token, 'pay');
+}
+
 /** Constant-time lookup of an enabled project by one of its share tokens. */
 export async function findProjectByShareToken(token: string, kind: ShareLinkKind = 'upload'): Promise<Doc | null> {
   const f = SHARE_FIELDS[kind];

@@ -7,7 +7,7 @@ import PayToFields from './PayToFields';
 export function PayRequestBasics() {
   return (
     <>
-      <label className="field"><span>Name of the person to be paid *</span>
+      <label className="field"><span>Whom to pay *</span>
         <input name="payee" required maxLength={100} autoComplete="off" placeholder="e.g. Ramesh (electrician)" />
       </label>
       <label className="field"><span>Amount (₹) *</span>

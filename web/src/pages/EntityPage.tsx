@@ -56,7 +56,7 @@ export default function EntityPage(props: Props) {
   const filterable = useMemo(() => cols.filter((f) => f.type === 'select').slice(0, 3), [cols]);
 
   const display = useCallback((f: FieldDef, d: Doc): string => {
-    const v = d[f.name];
+    const v = (d[f.name] === null || d[f.name] === undefined || d[f.name] === '') && f.fallback ? d[f.fallback] : d[f.name];
     if (f.type === 'money') return money(v);
     if (f.type === 'date') return fmtDate(v);
     if (f.type === 'boolean') return v ? 'Yes' : '';

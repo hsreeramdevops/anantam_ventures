@@ -4,7 +4,7 @@ import { SessionUser } from '../auth/session';
 import { MAX_UPLOAD_BYTES } from '../config';
 import { isValidBlobName, newBlobName, saveFile, sniffType } from '../files/blob';
 import { HttpError, json, route } from '../http';
-import { findProjectByShareToken, requireProject } from '../projects';
+import { findProjectByPublicToken, requireProject } from '../projects';
 import { clientIp, hitRateLimit } from '../ratelimit';
 import { optionalEmail, ValidationError } from '../schema';
 import { canWrite, createEntity, findVendorByName } from '../service';
@@ -166,11 +166,12 @@ async function createPaymentRequestBill(
     status: 'Unpaid',
     needsReview,
     remarks: f.purpose || null,
-  }, { source: 'payment-request', payee: f.payee, payTo: f.payTo, ...extra }, projectId);
+    payee: f.payee,
+  }, { source: 'payment-request', payTo: f.payTo, ...extra }, projectId);
 }
 
 async function projectForToken(req: HttpRequest) {
-  const p = await findProjectByShareToken(req.params.token ?? '', 'pay');
+  const p = await findProjectByPublicToken(req.params.token ?? '');
   if (!p) throw new HttpError(404, NOT_FOUND);
   return p;
 }
@@ -191,7 +192,7 @@ app.http('payRequestSubmit', {
     await hitRateLimit(`pay-ip:${clientIp(req)}`, ipUploads.max, ipUploads.windowMs,
       'Too many requests from your network. Please try again in a few minutes.');
     const project = await projectForToken(req);
-    await hitRateLimit(`pay-token:${project.id}:${project.payToken}`, tokenUploads.max, tokenUploads.windowMs,
+    await hitRateLimit(`pay-token:${project.id}:${req.params.token}`, tokenUploads.max, tokenUploads.windowMs,
       'This link has received too many requests. Please try again later.');
 
     const form = await readPayRequestForm(req);
