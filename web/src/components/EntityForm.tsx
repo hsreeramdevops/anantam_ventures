@@ -1,6 +1,8 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { api, fileUrl } from '../api';
 import { Doc, EntityDef, FieldDef } from '../types';
+import { PayTo, payToOf } from './PayDialog';
+import PayToFields, { payToFromForm } from './PayToFields';
 
 interface Props {
   def: EntityDef;
@@ -17,6 +19,24 @@ export default function EntityForm({ def, initial, refs, refLabel, onSaved, onCa
   const [busy, setBusy] = useState(false);
   const set = (k: string, v: unknown) => setValues((s) => ({ ...s, [k]: v }));
   const editable = def.fields.filter((f) => !f.readonly);
+  const isBill = def.type === 'bill';
+  const formRef = useRef<HTMLFormElement>(null);
+  const current = isBill ? payToOf(initial as Doc) : null;
+  const [payPrefill, setPayPrefill] = useState<PayTo | null>(current);
+
+  // New bill for a known vendor: offer the payment details from that vendor's latest bill.
+  const vendorId = isBill && !initial.id ? String(values.vendorId ?? '') : '';
+  useEffect(() => {
+    if (!vendorId) return;
+    let live = true;
+    api.list('bill').then(({ items }) => {
+      const prev = items.filter((b) => b.vendorId === vendorId && payToOf(b))
+        .sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')))[0];
+      const chosen = formRef.current ? new FormData(formRef.current).get('mode') : '';
+      if (live && prev && !chosen) setPayPrefill(payToOf(prev));
+    }).catch(() => undefined);
+    return () => { live = false; };
+  }, [vendorId]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -24,6 +44,10 @@ export default function EntityForm({ def, initial, refs, refLabel, onSaved, onCa
     try {
       const body: Record<string, unknown> = {};
       for (const f of editable) body[f.name] = values[f.name] ?? null;
+      if (isBill) {
+        const payTo = await payToFromForm(formRef.current!, payPrefill);
+        if (payTo || current) body.payTo = payTo;
+      }
       const saved = initial.id ? await api.update(def.type, initial.id, body) : await api.create(def.type, body);
       onSaved(saved);
     } catch (x: any) { setErr(x.message); } finally { setBusy(false); }
@@ -31,13 +55,20 @@ export default function EntityForm({ def, initial, refs, refLabel, onSaved, onCa
 
   return (
     <div className="modal-bg" onClick={onCancel}>
-      <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
+      <form ref={formRef} className="modal" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
         <h2>{initial.id ? 'Edit' : 'New'} {def.label.toLowerCase()}</h2>
         <div className="form-grid">
           {editable.map((f) => (
             <Field key={f.name} f={f} value={values[f.name]} onChange={(v) => set(f.name, v)} refs={refs} refLabel={refLabel} />
           ))}
         </div>
+        {isBill && (
+          <fieldset className="pay-section">
+            <legend>How to pay this vendor</legend>
+            {payPrefill && !current && <p className="muted small">Pre-filled from this vendor's previous bill. Choose “Not set” to skip.</p>}
+            <PayToFields initial={payPrefill} optional idPrefix="bill-pt" />
+          </fieldset>
+        )}
         {err && <p className="error">{err}</p>}
         <div className="row end">
           <button type="button" className="btn ghost" onClick={onCancel}>Cancel</button>

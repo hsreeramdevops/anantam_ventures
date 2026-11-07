@@ -197,3 +197,67 @@ describe('recording payments', () => {
     expect(t).toMatchObject({ paidBills: 350, unpaidBills: 250, paidCount: 1, unpaidCount: 2 });
   });
 });
+
+describe('team payment requests and pay details on any bill', () => {
+  const teamReq = (user: string, project: string, form: FormData) =>
+    call('billPaymentRequest', { method: 'POST', user, query: { project }, form });
+
+  it('members raise a payment request from the Bills page: Unpaid, no review flag, they are the creator', async () => {
+    const a = await newProject('Alpha', ['eng1']);
+    const r = await teamReq('eng1', a.id, payForm({ mode: 'Bank', accountHolder: 'Ramesh K', accountNumber: '123456789012', ifsc: 'SBIN0001234' }));
+    expect(r.status).toBe(201);
+    expect(r.body).toMatchObject({
+      projectId: a.id, status: 'Unpaid', source: 'payment-request', needsReview: false, createdBy: 'eng1', total: 7000, payee: 'Ramesh',
+      category: 'Electrical', payTo: { mode: 'Bank', accountNumber: '123456789012', ifsc: 'SBIN0001234' },
+    });
+    expect(r.body.submitterName).toBeUndefined();
+    const qr = await teamReq('eng1', a.id, payForm({ mode: 'QR', qr: PNG }));
+    expect(blobProjectId(qr.body.payTo.qrFile)).toBe(a.id);
+    expect((await teamReq('eng1', a.id, payForm({ upi: 'bad' }))).status).toBe(400);
+    expect((await teamReq('eng2', a.id, payForm())).status).toBe(404);
+    await getStore().put({ id: 'v1', type: 'user', username: 'v1', name: 'v1', email: 'v@x.com', role: 'viewer', active: true });
+    expect((await teamReq('v1', a.id, payForm())).status).toBe(403);
+  });
+
+  it('new and existing bills accept, validate, keep and clear payment details', async () => {
+    const a = await newProject('Alpha', ['eng1']);
+    const b = await newProject('Beta', ['eng1']);
+    const create = (body: Record<string, unknown>, project = a.id) =>
+      call('entityCollection', { method: 'POST', user: 'eng1', params: { type: 'bill' }, query: { project }, body: { category: 'Cement', total: 900, status: 'Unpaid', ...body } });
+    const update = (id: string, body: Record<string, unknown>) =>
+      call('entityItem', { method: 'PUT', user: 'eng1', params: { type: 'bill', id }, query: { project: a.id }, body });
+
+    const plain = await create({});
+    expect(plain.body.payTo).toBeUndefined();
+    const upi = await create({ payTo: { mode: 'UPI', upi: 'Vendor@OKSBI' } });
+    expect(upi.body.payTo).toEqual({ mode: 'UPI', upi: 'vendor@oksbi' });
+    expect((await create({ payTo: { mode: 'Bank', accountHolder: 'X', accountNumber: '12', ifsc: 'SBIN0001234' } })).body.error).toMatch(/9–18 digits/);
+    expect((await create({ payTo: { mode: 'UPI', upi: '123' } })).status).toBe(400);
+
+    // An existing (e.g. imported) unpaid bill gets details added later; other edits leave them alone.
+    const added = await update(plain.body.id, { payTo: { mode: 'Bank', accountHolder: 'Shop', accountNumber: '9876543210', accountNumber2: '9876543210', ifsc: 'hdfc0000123', bankName: 'HDFC' } });
+    expect(added.body.payTo).toEqual({ mode: 'Bank', accountHolder: 'Shop', accountNumber: '9876543210', ifsc: 'HDFC0000123', bankName: 'HDFC' });
+    expect((await update(plain.body.id, { notes: 'x' })).body.payTo.mode).toBe('Bank');
+
+    // QR: must be an image uploaded to this project; kept when the form doesn't send a new one.
+    const fd = new FormData(); fd.append('file', new Blob([PNG]), 'qr.png');
+    const up = await call('fileUpload', { method: 'POST', user: 'eng1', query: { folder: 'documents', project: a.id }, form: fd });
+    const fdB = new FormData(); fdB.append('file', new Blob([PNG]), 'qr.png');
+    const upB = await call('fileUpload', { method: 'POST', user: 'eng1', query: { folder: 'documents', project: b.id }, form: fdB });
+    expect((await update(plain.body.id, { payTo: { mode: 'QR' } })).body.error).toMatch(/Upload the QR/);
+    expect((await update(plain.body.id, { payTo: { mode: 'QR', qrFile: upB.body.name } })).status).toBe(400);
+    expect((await update(plain.body.id, { payTo: { mode: 'QR', qrFile: '../etc/passwd' } })).status).toBe(400);
+    expect((await update(plain.body.id, { payTo: { mode: 'QR', qrFile: up.body.name } })).body.payTo).toEqual({ mode: 'QR', qrFile: up.body.name });
+    expect((await update(plain.body.id, { payTo: { mode: 'QR' } })).body.payTo.qrFile).toBe(up.body.name);
+
+    expect((await update(plain.body.id, { payTo: null })).body.payTo).toBeNull();
+    expect((await update(plain.body.id, { payTo: 'junk' })).status).toBe(400);
+  });
+
+  it('existing payment-request QR stays valid when the bill is edited', async () => {
+    const a = await newProject('Alpha', ['eng1']);
+    const r = await teamReq('eng1', a.id, payForm({ mode: 'QR', qr: PNG }));
+    const e = await call('entityItem', { method: 'PUT', user: 'eng1', params: { type: 'bill', id: r.body.id }, query: { project: a.id }, body: { payTo: { mode: 'QR', qrFile: r.body.payTo.qrFile } } });
+    expect(e.status).toBe(200);
+  });
+});

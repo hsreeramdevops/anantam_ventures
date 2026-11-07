@@ -4,6 +4,13 @@ import { ENTITIES, entityDef, isProjectScoped } from '../schema';
 import { canRead, canWrite, createEntity, deleteEntity, getEntity, listEntities, updateEntity } from '../service';
 import { requireProject } from '../projects';
 import { HttpError, json, readJson, route } from '../http';
+import { PayTo, payToFromJson } from './payrequest';
+
+/** Bills carry optional payee payment details (`payTo`), validated separately from the schema fields. */
+function billExtra(type: string, body: Record<string, unknown>, projectId: string | null, prev: PayTo | null = null) {
+  if (type !== 'bill' || !('payTo' in body) || !projectId) return {};
+  return { payTo: payToFromJson(body.payTo, projectId, prev) };
+}
 
 app.http('schema', {
   methods: ['GET'], authLevel: 'anonymous', route: 'schema',
@@ -23,7 +30,10 @@ app.http('entityCollection', {
   handler: route(async (req, _ctx, user) => {
     const type = req.params.type;
     const projectId = await projectFor(req, user!, type);
-    if (req.method === 'POST') return json(await createEntity(user!, type, await readJson(req), {}, projectId), 201);
+    if (req.method === 'POST') {
+      const body = await readJson(req);
+      return json(await createEntity(user!, type, body, billExtra(type, body, projectId), projectId), 201);
+    }
     const items = await listEntities(type, projectId);
     items.sort((a, b) => String(b.createdAt ?? b.at ?? '').localeCompare(String(a.createdAt ?? a.at ?? '')));
     return json({ items, canWrite: canWrite(user!, type) });
@@ -35,7 +45,12 @@ app.http('entityItem', {
   handler: route(async (req, _ctx, user) => {
     const { type, id } = req.params;
     const projectId = await projectFor(req, user!, type);
-    if (req.method === 'PUT') return json(await updateEntity(user!, type, id, await readJson(req), projectId));
+    if (req.method === 'PUT') {
+      const body = await readJson(req);
+      const prev = type === 'bill' && 'payTo' in body ? await getEntity(type, id, projectId) : null;
+      const extra = billExtra(type, body, projectId, (prev?.payTo as PayTo | undefined) ?? null);
+      return json(await updateEntity(user!, type, id, body, projectId, extra));
+    }
     if (req.method === 'DELETE') { await deleteEntity(user!, type, id, projectId); return { status: 204 }; }
     return json(await getEntity(type, id, projectId));
   }),

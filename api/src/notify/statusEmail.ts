@@ -92,8 +92,8 @@ interface Recipient { email: string; unsub: UnsubTarget; link: string | null; us
 
 async function recipientFor(bill: Doc): Promise<Recipient | null> {
   if (bill.statusEmailOptOut) return null;
-  if (GUEST_SOURCES.includes(String(bill.source))) {
-    // Guests can't sign in, so no app link.
+  // Guests (public links) can't sign in, so no app link. Team-raised payment requests fall through to the creator.
+  if (GUEST_SOURCES.includes(String(bill.source)) && (bill.submitterEmail || String(bill.createdBy ?? '').startsWith('guest:'))) {
     return bill.submitterEmail ? { email: String(bill.submitterEmail), unsub: { kind: 'bill', id: bill.id }, link: null, userId: null } : null;
   }
   const creator = (await getStore().list('user')).find((u) => u.username === bill.createdBy);

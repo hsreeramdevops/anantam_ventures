@@ -179,4 +179,16 @@ describe('bill status emails', () => {
     const [b] = (await call('entityCollection', { user: 'admin1', params: { type: 'bill' }, query: { project: a.id } })).body.items;
     expect(b.submitterEmail).toBe('g@example.com');
   });
+
+  it('team-raised payment requests email the member who raised them, with a link', async () => {
+    const a = await newProject('Alpha', ['acct1']);
+    const fd = new FormData();
+    for (const [k, v] of Object.entries({ payee: 'Ramesh', amount: '500', mode: 'Cash' })) fd.append(k, v);
+    const r = await call('billPaymentRequest', { method: 'POST', user: 'acct1', query: { project: a.id }, form: fd });
+    expect(r.status).toBe(201);
+    await pay('admin1', a.id, r.body.id, {});
+    const m = mails('acct1@x.com');
+    expect(m).toHaveLength(1);
+    expect(m[0].text).toContain('/bills?');
+  });
 });

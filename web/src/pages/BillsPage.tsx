@@ -4,6 +4,7 @@ import { useEntity } from '../auth';
 import { money } from '../format';
 import { Doc } from '../types';
 import PayDialog, { outstanding, payToOf } from '../components/PayDialog';
+import PaymentRequestDialog from '../components/PaymentRequestDialog';
 import EntityPage from './EntityPage';
 
 interface UploadResult {
@@ -35,6 +36,7 @@ export default function BillsPage() {
   const [err, setErr] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
   const [paying, setPaying] = useState<Doc | null>(null);
+  const [requesting, setRequesting] = useState(false);
 
   async function upload(files: FileList | null, openEdit: (d: Doc) => void) {
     if (!files?.length) return;
@@ -115,6 +117,7 @@ export default function BillsPage() {
             <input ref={input} type="file" hidden multiple accept="application/pdf,image/jpeg,image/png,image/webp"
               onChange={(e) => upload(e.target.files, openEdit)} />
             <button className="btn accent" disabled={busy} onClick={() => input.current?.click()}>⬆ Upload bill (AI)</button>
+            <button className="btn primary" onClick={() => setRequesting(true)}>+ Payment request</button>
           </>
         )}
         rowActions={(d, reload) => (
@@ -131,6 +134,10 @@ export default function BillsPage() {
           </>
         )}
       />
+      {requesting && (
+        <PaymentRequestDialog onClose={() => setRequesting(false)}
+          onSaved={() => { setRequesting(false); setReloadKey((k) => k + 1); }} />
+      )}
       {paying && (
         <PayDialog bill={paying} canRecord={!!def?.canWrite} onClose={() => setPaying(null)}
           onSaved={() => { setPaying(null); setReloadKey((k) => k + 1); }} />
