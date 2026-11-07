@@ -117,10 +117,12 @@ describe('service rules', () => {
     expect((await getStore().get('flat', flat.id))!.status).toBe('Available');
   });
   it('protects last admin and unique usernames', async () => {
+    process.env.BOOTSTRAP_ADMIN_EMAIL = 'a@x.com'; // only the owner may set roles
     const a = await createEntity(admin, 'user', { username: 'Boss', name: 'B', email: 'b@x.com', role: 'admin' });
     expect(a.username).toBe('boss');
     await expect(createEntity(admin, 'user', { username: 'boss', name: 'C', email: 'c@x.com', role: 'viewer' })).rejects.toThrow(/taken/);
     await expect(updateEntity(admin, 'user', a.id, { role: 'viewer' })).rejects.toThrow(/last active admin/);
+    delete process.env.BOOTSTRAP_ADMIN_EMAIL;
   });
 });
 

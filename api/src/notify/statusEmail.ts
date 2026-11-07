@@ -5,6 +5,8 @@ import { config } from '../config';
 import { hitRateLimit } from '../ratelimit';
 import { Doc, getStore } from '../store';
 import { billLink, payToSummary } from './telegram';
+import { canAccessProject } from '../projects';
+import { SessionUser } from '../auth/session';
 
 /**
  * Emails the person who raised a bill when its status changes (Unpaid ⇄ Partially Paid ⇄ Paid).
@@ -98,6 +100,9 @@ async function recipientFor(bill: Doc): Promise<Recipient | null> {
   }
   const creator = (await getStore().list('user')).find((u) => u.username === bill.createdBy);
   if (!creator || creator.active === false || !creator.email || creator.billStatusEmails === false) return null;
+  // Someone removed from the project no longer gets its bill details.
+  const project = await getStore().get('project', String(bill.projectId ?? ''));
+  if (!project || !canAccessProject({ id: creator.id, role: creator.role } as SessionUser, project)) return null;
   return { email: String(creator.email), unsub: { kind: 'user', id: creator.id }, link: billLink(bill), userId: creator.id };
 }
 

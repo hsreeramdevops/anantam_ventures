@@ -1,5 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { api, fileUrl } from '../api';
+import { useAuth } from '../auth';
+import { useProject } from '../project';
 import { Doc, EntityDef, FieldDef } from '../types';
 import { PayTo, payToOf } from './PayDialog';
 import PayToFields, { payToFromForm } from './PayToFields';
@@ -14,8 +16,17 @@ interface Props {
 }
 
 export default function EntityForm({ def, initial, refs, refLabel, onSaved, onCancel }: Props) {
+  const { user: me } = useAuth();
+  const { projects, current: currentProject } = useProject();
+  const isUser = def.type === 'user';
+  const isOwner = !!me?.isOwner;
+  const editingOwner = isUser && initial.owner === true;
+  const [projIds, setProjIds] = useState<string[]>(() =>
+    (initial.projects as string[] | undefined) ?? (!initial.id && currentProject ? [currentProject.id] : []));
+  const [projTouched, setProjTouched] = useState(false);
   // Older bills have no "Whom to pay"; start from the vendor name so saving does not trip the required check.
   const [values, setValues] = useState<Record<string, unknown>>(() => ({
+    ...(def.type === 'user' && !initial.id ? { role: 'viewer', active: true } : {}),
     ...initial, ...(def.type === 'bill' && !initial.payee && initial.vendorName ? { payee: initial.vendorName } : {}),
   }));
   const [err, setErr] = useState('');
@@ -47,6 +58,13 @@ export default function EntityForm({ def, initial, refs, refLabel, onSaved, onCa
     try {
       const body: Record<string, unknown> = {};
       for (const f of editable) body[f.name] = values[f.name] ?? null;
+      if (isUser) {
+        if (!isOwner) body.role = initial.id ? initial.role ?? null : 'viewer';
+        if (body.role !== 'admin' && !projIds.length && (!initial.id || projTouched || initial.role === 'admin')) {
+          throw new Error('Pick at least one project for this user.');
+        }
+        if (!initial.id || projTouched || (initial.role === 'admin' && body.role !== 'admin')) body.projects = projIds;
+      }
       if (isBill) {
         const payTo = await payToFromForm(formRef.current!, payPrefill);
         if (payTo || current) body.payTo = payTo;
@@ -62,9 +80,26 @@ export default function EntityForm({ def, initial, refs, refLabel, onSaved, onCa
         <h2>{initial.id ? 'Edit' : 'New'} {def.label.toLowerCase()}</h2>
         <div className="form-grid">
           {editable.map((f) => (
-            <Field key={f.name} f={f} value={values[f.name]} onChange={(v) => set(f.name, v)} refs={refs} refLabel={refLabel} />
+            <Field key={f.name} f={f} value={values[f.name]} onChange={(v) => set(f.name, v)} refs={refs} refLabel={refLabel}
+              disabled={isUser && f.name === 'role' && !isOwner} />
           ))}
         </div>
+        {isUser && !isOwner && <p className="muted small">Only the owner can change roles. New users start as viewer.</p>}
+        {editingOwner && !isOwner && <p className="error">This is the owner's account. Only the owner can edit it.</p>}
+        {isUser && (
+          <fieldset className="pay-section">
+            <legend>Projects{values.role !== 'admin' && <span className="req">*</span>}</legend>
+            <p className="muted small">{values.role === 'admin' ? 'Admins can open every project.' : 'This user can only see the projects ticked here.'}</p>
+            {projects.map((p) => (
+              <label key={p.id} className="check">
+                <input type="checkbox" checked={projIds.includes(p.id)} onChange={(e) => {
+                  setProjTouched(true);
+                  setProjIds((ids) => (e.target.checked ? [...ids, p.id] : ids.filter((x) => x !== p.id)));
+                }} />{p.name}
+              </label>
+            ))}
+          </fieldset>
+        )}
         {isBill && (
           <fieldset className="pay-section">
             <legend>How to pay this vendor</legend>
@@ -75,15 +110,15 @@ export default function EntityForm({ def, initial, refs, refLabel, onSaved, onCa
         {err && <p className="error">{err}</p>}
         <div className="row end">
           <button type="button" className="btn ghost" onClick={onCancel}>Cancel</button>
-          <button className="btn primary" disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+          <button className="btn primary" disabled={busy || (editingOwner && !isOwner)}>{busy ? 'Saving…' : 'Save'}</button>
         </div>
       </form>
     </div>
   );
 }
 
-function Field({ f, value, onChange, refs, refLabel }: {
-  f: FieldDef; value: unknown; onChange: (v: unknown) => void;
+function Field({ f, value, onChange, refs, refLabel, disabled }: {
+  f: FieldDef; value: unknown; onChange: (v: unknown) => void; disabled?: boolean;
   refs: Record<string, Doc[]>; refLabel: (t: string, id: unknown) => string;
 }) {
   const v = value === null || value === undefined ? '' : String(value);
@@ -94,7 +129,7 @@ function Field({ f, value, onChange, refs, refLabel }: {
     case 'select':
       return (
         <label>{label}
-          <select value={v} required={f.required} onChange={(e) => onChange(e.target.value)}>
+          <select value={v} required={f.required} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
             <option value="">—</option>
             {f.options!.map((o) => <option key={o}>{o}</option>)}
           </select>

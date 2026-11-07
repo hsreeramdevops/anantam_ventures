@@ -6,6 +6,9 @@ import { entityDef, EntityDef, isProjectScoped, validate, ValidationError } from
 import { Doc, getStore } from './store';
 import { notifyBillCreated, notifyBillUpdated } from './notify/telegram';
 import { notifyBillStatusEmail } from './notify/statusEmail';
+import {
+  guardUserCreate, guardUserDelete, guardUserUpdate, memberOf, membershipSummary, readProjectIds, requireAProject, setUserProjects,
+} from './users';
 
 const AUDIT_TTL = 400 * 24 * 3600;
 const today = () => new Date().toISOString().slice(0, 10);
@@ -139,15 +142,23 @@ export async function createEntity(user: SessionUser, type: string, input: Recor
   const def = entityDef(type);
   if (!def || !canWrite(user, type)) throw new HttpError(403, 'Not allowed');
   if (isProjectScoped(type) && !projectId) throw new HttpError(400, 'Select a project first');
+  const isUser = type === 'user';
+  if (isUser) input = guardUserCreate(user, input);
+  const userProjects = isUser ? (await readProjectIds(input)) ?? [] : [];
   const now = new Date().toISOString();
   let doc: Doc = {
     ...validate(def, input), ...extra, id: crypto.randomUUID(), type, createdAt: now, createdBy: user.username,
     ...(isProjectScoped(type) ? { projectId } : {}),
   };
   doc = await beforeSave(doc, null);
+  if (isUser) requireAProject(doc, userProjects);
   await getStore().put(doc);
   await afterSave(doc, null, user);
-  await audit(user, 'create', type, doc.id, `${def.label} ${String(doc[def.titleField] ?? doc.id)}`, projectId);
+  await audit(user, 'create', type, doc.id, `${def.label} ${String(doc[def.titleField] ?? doc.id)}${isUser ? ` (role ${doc.role})` : ''}`, projectId);
+  if (isUser && userProjects.length) {
+    const c = await setUserProjects(doc.id, userProjects, user.username);
+    await audit(user, 'membership', 'user', doc.id, membershipSummary(String(doc.username), c));
+  }
   return doc;
 }
 
@@ -162,10 +173,25 @@ export async function updateEntity(
   const changes = validate(def, input, true);
   let doc: Doc = { ...prev, ...changes, ...extra, id, type, updatedAt: new Date().toISOString(), updatedBy: user.username };
   doc = await beforeSave(doc, prev);
+  const isUser = type === 'user';
+  let userProjects: string[] | undefined;
+  if (isUser) {
+    guardUserUpdate(user, input, prev, doc);
+    userProjects = await readProjectIds(input);
+    // Enforce "at least one project" when projects are edited or an admin loses admin; untouched legacy users stay as they are.
+    if (userProjects !== undefined || (prev.role === 'admin' && doc.role !== 'admin')) {
+      requireAProject(doc, userProjects ?? memberOf(id, await store.list('project')));
+    }
+  }
   await store.put(doc);
   await afterSave(doc, prev, user);
   const changed = Object.keys(changes).filter((k) => JSON.stringify(prev[k]) !== JSON.stringify(doc[k]));
   await audit(user, 'update', type, id, `${def.label} ${String(doc[def.titleField] ?? id)}: ${changed.join(', ') || 'no changes'}`, projectId);
+  if (isUser && prev.role !== doc.role) await audit(user, 'role', 'user', id, `Role of ${doc.username}: ${prev.role} → ${doc.role}`);
+  if (isUser && userProjects) {
+    const c = await setUserProjects(id, userProjects, user.username);
+    if (c.added.length || c.removed.length) await audit(user, 'membership', 'user', id, membershipSummary(String(doc.username), c));
+  }
   return doc;
 }
 
@@ -183,12 +209,17 @@ export async function deleteEntity(user: SessionUser, type: string, id: string, 
   if (!def || !canWrite(user, type)) throw new HttpError(403, 'Not allowed');
   const store = getStore();
   const prev = scopeCheck(type, await store.get(type, id), projectId);
+  if (type === 'user') guardUserDelete(prev);
   if (type === 'user' && prev.id === user.id) throw new HttpError(400, 'You cannot delete yourself');
   if (type === 'user' && prev.role === 'admin') {
     const admins = (await store.list('user')).filter((u) => u.role === 'admin' && u.active !== false && u.id !== id);
     if (!admins.length) throw new HttpError(400, 'Cannot delete the last admin');
   }
   await store.delete(type, id);
+  if (type === 'user') {
+    const c = await setUserProjects(id, [], user.username);
+    if (c.removed.length) await audit(user, 'membership', 'user', id, membershipSummary(String(prev.username), c));
+  }
   if (type === 'booking' && prev.flatId && prev.status !== 'Cancelled') {
     const flat = await store.get('flat', String(prev.flatId));
     if (flat && flat.status === 'Booked') await store.put({ ...flat, status: 'Available' });

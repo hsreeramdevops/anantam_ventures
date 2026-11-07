@@ -23,7 +23,7 @@ export default function Projects() {
       </PageHead>
       {loading && <p className="muted">Loading…</p>}
       {!loading && !projects.length && (
-        <p className="muted">{canManage ? 'No projects yet. Create your first project.' : 'You have not been added to any project yet. Ask an admin to add you.'}</p>
+        <p className="muted">{canManage ? 'No projects yet. Create your first project.' : "You haven't been added to a project yet. Ask an admin."}</p>
       )}
       <div className="project-grid">
         {projects.map((p) => (

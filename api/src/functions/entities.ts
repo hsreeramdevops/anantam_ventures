@@ -7,6 +7,7 @@ import { HttpError, json, readJson, route } from '../http';
 import { PayTo, payToFromJson } from './payrequest';
 import { blobProjectId, isValidBlobName } from '../files/blob';
 import { Doc } from '../store/types';
+import { visibleUsers } from '../users';
 
 /** A file field may only point at a file uploaded into this project (or keep its current value). */
 function checkFiles(type: string, body: Record<string, unknown>, projectId: string | null, prev: Doc | null = null) {
@@ -49,7 +50,8 @@ app.http('entityCollection', {
       checkFiles(type, body, projectId);
       return json(await createEntity(user!, type, body, billExtra(type, body, projectId), projectId), 201);
     }
-    const items = await listEntities(type, projectId);
+    let items = await listEntities(type, projectId);
+    if (type === 'user') items = await visibleUsers(user!, items);
     items.sort((a, b) => String(b.createdAt ?? b.at ?? '').localeCompare(String(a.createdAt ?? a.at ?? '')));
     return json({ items, canWrite: canWrite(user!, type) });
   }),
@@ -69,6 +71,12 @@ app.http('entityItem', {
       return json(await updateEntity(user!, type, id, body, projectId, extra));
     }
     if (req.method === 'DELETE') { await deleteEntity(user!, type, id, projectId); return { status: 204 }; }
-    return json(await getEntity(type, id, projectId));
+    const doc = await getEntity(type, id, projectId);
+    if (type === 'user') {
+      const [v] = await visibleUsers(user!, [doc]);
+      if (!v) throw new HttpError(404, 'Not found');
+      return json(v);
+    }
+    return json(doc);
   }),
 });

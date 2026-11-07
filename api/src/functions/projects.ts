@@ -5,7 +5,8 @@ import { HttpError, json, readJson, route } from '../http';
 import { getAccessibleProject, listAccessibleProjects, newShareToken, publicProjectView, SHARE_FIELDS, ShareLinkKind } from '../projects';
 import { PROJECT_DEF, validate, ValidationError } from '../schema';
 import { audit } from '../service';
-import { getStore } from '../store';
+import { Doc, getStore } from '../store';
+import { memberOf } from '../users';
 
 const requireAdmin = (user: SessionUser) => { if (user.role !== 'admin') throw new HttpError(403, 'Only admins can manage projects'); };
 
@@ -48,14 +49,35 @@ app.http('projectItem', {
     requireAdmin(user!);
     const input = await readJson(req);
     const members = await readMembers(input);
+    if (members) await checkMemberRemoval(prev, members);
     const doc = await getStore().put({
       ...prev, ...validate(PROJECT_DEF, input, true), ...(members ? { members } : {}),
       updatedAt: new Date().toISOString(), updatedBy: user!.username,
     });
     await audit(user!, 'update', 'project', doc.id, `Project ${doc.name}`, doc.id);
+    if (members) {
+      const before = new Set((prev.members as string[] | undefined) ?? []);
+      const diff = [...members.filter((m) => !before.has(m)).map((m) => `+${m}`), ...[...before].filter((m) => !members.includes(m)).map((m) => `−${m}`)];
+      if (diff.length) await audit(user!, 'membership', 'project', doc.id, `Members of ${doc.name}: ${diff.join(', ')}`, doc.id);
+    }
     return json(doc);
   }),
 });
+
+/** A non-admin may not lose their last project. */
+async function checkMemberRemoval(project: Doc, members: string[]) {
+  const removed = ((project.members as string[] | undefined) ?? []).filter((m) => !members.includes(m));
+  if (!removed.length) return;
+  const store = getStore();
+  const projects = await store.list('project');
+  for (const id of removed) {
+    const u = await store.get('user', id);
+    if (!u || u.role === 'admin') continue;
+    if (!memberOf(id, projects).some((pid) => pid !== project.id)) {
+      throw new ValidationError(`${u.name ?? u.username} would be left without any project. Add them to another project first.`);
+    }
+  }
+}
 
 /**
  * Public link management: `regenerate` (old link dies immediately), `disable`, `enable`.

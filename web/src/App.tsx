@@ -9,6 +9,7 @@ import Notifications from './pages/Notifications';
 import BillsPage from './pages/BillsPage';
 import Dashboard from './pages/Dashboard';
 import EntityPage from './pages/EntityPage';
+import UsersPage from './pages/UsersPage';
 import Login from './pages/Login';
 import { StockReport, WagesReport } from './pages/Reports';
 
@@ -77,6 +78,7 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/bills" element={<BillsPage />} />
           <Route path="/bills/:id" element={<BillView />} />
+          <Route path="/e/user" element={<UsersPage />} />
           <Route path="/e/:type" element={<EntityPage />} />
           <Route path="/reports/stock" element={<StockReport />} />
           <Route path="/reports/wages" element={<WagesReport />} />

@@ -3,6 +3,7 @@ import { requestOtp, verifyOtp } from '../auth/otp';
 import { createSessionToken, sessionCookie } from '../auth/session';
 import { audit } from '../service';
 import { json, readJson, route } from '../http';
+import { isOwner } from '../users';
 
 app.http('authRequestOtp', {
   methods: ['POST'], authLevel: 'anonymous', route: 'auth/request-otp',
@@ -36,5 +37,5 @@ app.http('authLogout', {
 
 app.http('authMe', {
   methods: ['GET'], authLevel: 'anonymous', route: 'auth/me',
-  handler: route(async (_req, _ctx, user) => json({ user })),
+  handler: route(async (_req, _ctx, user) => json({ user: { ...user!, isOwner: isOwner(user) } })),
 });

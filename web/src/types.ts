@@ -37,6 +37,8 @@ export interface User {
   name: string;
   email: string;
   role: Role;
+  /** The owner (BOOTSTRAP_ADMIN_EMAIL) is the only one who can change roles. */
+  isOwner?: boolean;
 }
 
 export interface Project {

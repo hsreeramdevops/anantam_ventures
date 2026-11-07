@@ -23,10 +23,20 @@ customer payment schedules, follow-ups, site progress and photos, materials, lab
 | **Daily digest email** | 09:00 IST: bills/customer payments due in 3 days, overdue tasks, expiring documents — per role. |
 | **Telegram alerts** | Free, opt-in per person. Under **Notifications** each user connects Telegram and ticks, per project they can access: payment requests, guest bill uploads, bills added by the team, bills paid/part-paid and the daily digest. Admins get payment requests + guest uploads by default. Messages are short (project, payee/vendor, ₹, purpose, mode, link) and never include full account numbers or QR images. You never get alerts for your own changes. |
 | **Bill status emails** | When a bill's status changes (Unpaid ⇄ Partially Paid ⇄ Paid), the requestor gets an email: the team member who added it (toggle under **Notifications**, on by default; includes a link to the bill), or a guest / payment-request submitter who gave the optional email (no app link). Shows project, payee, amount, paid, balance, paid date, mode, reference/UTR and their remarks; account numbers show only the last 4 digits. Never sent for your own change; one-click unsubscribe in every email; max 20 per bill and 10 per address per hour. Uses the existing Communication Services sender. |
-| **Admin** | Users & roles, audit log (400-day retention), CSV export everywhere. |
+| **Admin** | Users & roles, audit log (400-day retention), CSV export everywhere. Every non-admin user must belong to at least one project (ticked on the user form; the last project can't be removed). Users and projects are many-to-many. |
 | **Design ("Formwork")** | Drawing-sheet look: concrete/sheet palette, safety-yellow single primary action per view, square edges and 1–2px rules, title block (project · sheet · date), tabular Indian-grouped money. Status tags use colour **and** a second cue: solid orange UNPAID, hatched PART bar showing the balance, green-outline ✓ PAID, blue revision cloud for AI bills needing review. Bills list shortcuts: **U / P / A** tabs, **/** search, **↑/↓** + **Enter** open. **Mark as paid** is a 3-step stepper (Amount → Mode → Reference/UTR; Enter accepts defaults). Fonts: self-hosted subsets of Archivo and JetBrains Mono (SIL OFL, `web/public/fonts/`). |
 
-Roles: **admin** (everything), **accountant** (finance + sales), **engineer** (site, bills upload, tasks), **viewer** (read-only).
+Roles: **admin** (everything, every project), **accountant** (finance + sales), **engineer** (site, bills upload, tasks), **viewer** (read-only).
+
+**Owner.** The account whose email matches `BOOTSTRAP_ADMIN_EMAIL` is the *owner* (shown with an **Owner** badge). Only the owner
+can change anyone's role (including making or removing admins). Other admins keep full data access and can add, edit and remove
+users and assign them to projects, but users they create always start as **viewer**. Nobody can demote, deactivate, delete or
+take the email of the owner. Role and membership changes are written to the audit log.
+
+**Isolation.** Non-admins only ever see projects they are a member of. The API checks this on every route (records, bills,
+Mark paid, uploads, payment requests, files/QR images, dashboard, reports, CSV data, Telegram subscriptions, digest and status
+emails); anything from another project answers **404**. The users list only shows people who share a project with you (plus
+admins). `api/test/security.test.ts` covers each endpoint with a member of project A probing project B.
 
 ## Architecture
 
