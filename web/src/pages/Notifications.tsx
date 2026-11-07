@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import { useAuth } from '../auth';
+import { PageHead } from '../components/fw';
 
 interface Status {
   configured: boolean;
@@ -83,7 +84,7 @@ export default function Notifications() {
 
   return (
     <div>
-      <h2>Notifications</h2>
+      <PageHead title="Notifications" sheet="Alerts" />
       <BillEmailCard />
       <div className="card" style={{ maxWidth: 760 }}>
         <h3 style={{ marginTop: 0 }}>Telegram</h3>

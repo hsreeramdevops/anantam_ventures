@@ -32,39 +32,42 @@ export default function App() {
   // Public project link: no login, nothing else reachable. Older /pay/ links open on "Request a payment".
   if (loc.pathname.startsWith('/u/')) return <Routes><Route path="/u/:token" element={<PublicLanding />} /></Routes>;
   if (loc.pathname.startsWith('/pay/')) return <Routes><Route path="/pay/:token" element={<PublicLanding initial="pay" />} /></Routes>;
-  if (loading) return <div className="center muted">Loading…</div>;
+  if (loading) return <div className="login-wrap"><p className="lbl">Loading…</p></div>;
   if (!user) return <Login />;
-  if (projectsLoading) return <div className="center muted">Loading projects…</div>;
+  if (projectsLoading) return <div className="login-wrap"><p className="lbl">Loading projects…</p></div>;
 
   const groups = [...new Set(entities.map((e) => e.group))];
+  const code = (g: number, i: number) => `${g}.${String(i + 1).padStart(2, '0')}`;
   return (
     <div className="shell">
       <header className="topbar">
-        <button className="icon-btn mobile-only" onClick={() => setMenuOpen((o) => !o)} aria-label="Menu">☰</button>
-        <strong className="brand">🏗️ Anantam Ventures</strong>
+        <button className="icon-btn mobile-only" onClick={() => setMenuOpen((o) => !o)} aria-label="Menu" aria-expanded={menuOpen}>☰</button>
+        <NavLink to={current ? '/' : '/projects'} className="brand"><i aria-hidden="true" /><span>Anantam Ventures</span></NavLink>
         {projects.length > 0 && (
-          <select className="project-switch" aria-label="Project" value={current?.id ?? ''}
-            onChange={(e) => { if (e.target.value === '__all') { nav('/projects'); return; } select(e.target.value); nav('/'); }}>
-            {!current && <option value="">Select project…</option>}
-            {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            <option value="__all">All projects…</option>
-          </select>
+          <label className="pswitch">
+            <span className="lbl">Project</span>
+            <select className="project-switch" aria-label="Project" value={current?.id ?? ''}
+              onChange={(e) => { if (e.target.value === '__all') { nav('/projects'); return; } select(e.target.value); nav('/'); }}>
+              {!current && <option value="">Select project…</option>}
+              {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              <option value="__all">All projects…</option>
+            </select>
+          </label>
         )}
         <span className="spacer" />
-        <span className="muted small">{user.name} · {user.role}</span>
+        <span className="who">{user.name} <span className="mono">· {user.role}</span></span>
         <button className="btn ghost" onClick={logout}>Sign out</button>
       </header>
       <nav className={`sidebar ${menuOpen ? 'open' : ''}`} onClick={() => setMenuOpen(false)}>
-        <NavLink to="/projects">Projects</NavLink>
-        <NavLink to="/notifications">Notifications</NavLink>
-        {current && <NavLink to="/" end>Dashboard</NavLink>}
-        {current && groups.map((g) => (
+        <div className="nav-group" style={{ marginTop: 0 }}>Sheets</div>
+        <NavLink to="/projects"><span className="mono">0.01</span>Projects</NavLink>
+        <NavLink to="/notifications"><span className="mono">0.02</span>Notifications</NavLink>
+        {current && <NavLink to="/" end><span className="mono">0.03</span>Dashboard</NavLink>}
+        {current && groups.map((g, gi) => (
           <div key={g}>
             <div className="nav-group">{g}</div>
-            {entities.filter((e) => e.group === g).map((e) => (
-              <NavLink key={e.type} to={CUSTOM[e.type] ?? `/e/${e.type}`}>{e.plural}</NavLink>
-            ))}
-            {(EXTRA_LINKS[g] ?? []).map((l) => <NavLink key={l.to} to={l.to}>{l.label}</NavLink>)}
+            {[...entities.filter((e) => e.group === g).map((e) => ({ to: CUSTOM[e.type] ?? `/e/${e.type}`, label: e.plural })), ...(EXTRA_LINKS[g] ?? [])]
+              .map((l, i) => <NavLink key={l.to} to={l.to}><span className="mono">{code(gi + 1, i)}</span>{l.label}</NavLink>)}
           </div>
         ))}
       </nav>

@@ -31,9 +31,13 @@ export default function Login() {
 
   return (
     <div className="login-wrap">
-      <div className="card login">
-        <h1>🏗️ Anantam Ventures</h1>
-        <p className="muted">Construction management</p>
+      <div className="login">
+        <div className="login-head">
+          <div className="brand2"><i className="tri" aria-hidden="true" />Anantam Ventures</div>
+          <h1>Sign in</h1>
+          <p>Construction management</p>
+        </div>
+        <div className="login-body">
         {step === 'id' ? (
           <form onSubmit={sendCode}>
             <label>Username or email
@@ -56,6 +60,7 @@ export default function Login() {
           </form>
         )}
         {err && <p className="error">{err}</p>}
+        </div>
       </div>
     </div>
   );

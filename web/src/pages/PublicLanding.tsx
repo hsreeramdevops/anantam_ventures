@@ -2,6 +2,7 @@ import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../api';
 import { PayRequestBasics } from '../components/PaymentRequestDialog';
+import { caseClass } from '../components/fw';
 
 type Flow = 'choose' | 'bill' | 'pay';
 interface Read { draft: string; read: boolean; vendorName: string | null; total: number | null; billDate: string | null }
@@ -28,43 +29,56 @@ export default function PublicLanding({ initial = 'choose' }: { initial?: Flow }
 
   const restart = () => { setDone(null); setFlow('choose'); };
 
+  const sub = state !== 'ready' ? '' : done ? 'Sent to the team' : flow === 'bill' ? 'Upload a bill' : flow === 'pay' ? 'Request a payment' : 'Bills & payments';
   return (
-    <div className="login-wrap">
-      <div className="card login guest">
-        <h1>🏗️ Anantam Ventures</h1>
-        {state === 'loading' && <p className="muted">Loading…</p>}
-        {state === 'missing' && <p className="error">This link is invalid or has been disabled. Please ask the team for a new link.</p>}
-        {state === 'ready' && done && (
-          <>
-            <h2>Sent ✅</h2>
-            <p>{done}</p>
-            <p className="muted small">The team will review it and pay. If you added your email, you'll get an update when it's paid.</p>
-            <button className="btn primary block" onClick={restart}>Send another</button>
-          </>
-        )}
-        {state === 'ready' && !done && flow === 'choose' && (
-          <>
-            <p>What would you like to do for <b>{project}</b>?</p>
-            <div className="landing-choices">
-              <button className="landing-choice" onClick={() => setFlow('bill')}>
-                <span className="landing-icon">🧾</span>
-                <b>Upload a bill</b>
-                <span className="muted small">Photo or PDF of a bill. We read it and raise a payment request.</span>
+    <div className="gpage">
+      <main className="gsheet">
+        <header className="gtop">
+          <div className="brand2"><i className="tri" aria-hidden="true" />Anantam Ventures</div>
+          <h1 className={caseClass(project)}>{state === 'ready' ? project : 'Anantam Ventures'}</h1>
+          {sub && <p>{sub}</p>}
+        </header>
+        <div className="g">
+          {state === 'loading' && <p className="muted">Loading…</p>}
+          {state === 'missing' && <p className="error">This link is invalid or has been disabled. Please ask the team for a new link.</p>}
+          {state === 'ready' && done && (
+            <>
+              <div className="done-mark" aria-hidden="true">✓</div>
+              <h2>Sent</h2>
+              <p>{done}</p>
+              <p className="muted">The team will review it and pay. If you added your email, you'll get an update when it's paid.</p>
+              <div className="gcta"><button className="btn primary" onClick={restart}>Send another</button></div>
+            </>
+          )}
+          {state === 'ready' && !done && flow === 'choose' && (
+            <>
+              <h2>What do you need?</h2>
+              <button className="opt first" onClick={() => setFlow('bill')}>
+                <span className="n">1</span>
+                <span className="c">
+                  <b>Upload a bill</b>
+                  <span>Photo or PDF of a bill. We read it and raise a payment request.</span>
+                  <span className="go2">Choose →</span>
+                </span>
               </button>
-              <button className="landing-choice" onClick={() => setFlow('pay')}>
-                <span className="landing-icon">💸</span>
-                <b>Request a payment</b>
-                <span className="muted small">No bill? Ask for a payment by UPI, QR, bank transfer or cash.</span>
+              <button className="opt" onClick={() => setFlow('pay')}>
+                <span className="n">2</span>
+                <span className="c">
+                  <b>Request a payment</b>
+                  <span>No bill? Ask to be paid by UPI, QR, bank transfer or cash.</span>
+                  <span className="go2">Choose →</span>
+                </span>
               </button>
-            </div>
-          </>
-        )}
-        {state === 'ready' && !done && flow !== 'choose' && (
-          <button className="btn ghost small back-link" onClick={() => setFlow('choose')}>← Back</button>
-        )}
-        {state === 'ready' && !done && flow === 'bill' && <BillFlow token={t} project={project!} onDone={setDone} />}
-        {state === 'ready' && !done && flow === 'pay' && <PayFlow token={t} project={project!} onDone={setDone} />}
-      </div>
+              <p className="gnote">No login needed. Only the {project} team sees what you send.</p>
+            </>
+          )}
+          {state === 'ready' && !done && flow !== 'choose' && (
+            <button className="btn ghost back-link" onClick={() => setFlow('choose')}>← Back</button>
+          )}
+          {state === 'ready' && !done && flow === 'bill' && <BillFlow token={t} project={project!} onDone={setDone} />}
+          {state === 'ready' && !done && flow === 'pay' && <PayFlow token={t} project={project!} onDone={setDone} />}
+        </div>
+      </main>
     </div>
   );
 }
@@ -73,9 +87,9 @@ function ContactFields({ prefix = '' }: { prefix?: string }) {
   const n = (s: string) => (prefix ? `${prefix}${s[0].toUpperCase()}${s.slice(1)}` : s);
   return (
     <>
-      <label className="field"><span>Your name{prefix ? '' : ' *'}</span><input name={prefix ? n('name') : 'name'} required={!prefix} maxLength={100} autoComplete="name" /></label>
-      <label className="field"><span>Your phone</span><input name={n('phone')} type="tel" maxLength={20} autoComplete="tel" /></label>
-      <label className="field"><span>Your email (to get status updates)</span><input name={n('email')} type="email" maxLength={254} autoComplete="email" inputMode="email" /></label>
+      <label className="field"><span>Your name{prefix ? <span className="opt-l"> (optional)</span> : ' *'}</span><input name={prefix ? n('name') : 'name'} required={!prefix} maxLength={100} autoComplete="name" /></label>
+      <label className="field"><span>Your phone <span className="opt-l">(optional)</span></span><input name={n('phone')} type="tel" maxLength={20} autoComplete="tel" /></label>
+      <label className="field"><span>Your email <span className="opt-l">(optional, for status updates)</span></span><input name={n('email')} type="email" maxLength={254} autoComplete="email" inputMode="email" /></label>
     </>
   );
 }
@@ -116,20 +130,19 @@ function BillFlow({ token, project, onDone }: { token: string; project: string; 
   };
 
   return (
-    <form ref={form} onSubmit={submit}>
-      <h2>Upload a bill</h2>
-      <p className="muted">Take a photo or upload the PDF of the bill. We'll read the amount and details automatically and
+    <form ref={form} onSubmit={submit} className="gform">
+      <p>Take a photo or upload the PDF of the bill. We'll read the amount and details automatically and
         raise a payment request to the team. You'll get an email when it's paid (if you add your email).</p>
       <label className="field"><span>Bill (PDF or photo, max 10 MB) *</span>
         <input name="file" type="file" required accept="application/pdf,image/jpeg,image/png,image/webp" onChange={pick} />
       </label>
       {reading && <p className="muted">Reading your bill…</p>}
       {read && (
-        <p className="small read-summary">
+        <p className="read-summary"><span>
           {read.read && (read.total || read.vendorName)
             ? <>We read: {read.vendorName && <b>{read.vendorName}</b>}{read.total ? <> · {inr(read.total)}</> : null}{read.billDate ? <> · {read.billDate}</> : null}</>
             : <>We couldn't read the details automatically. The team will check the bill.</>}
-        </p>
+        </span></p>
       )}
       <label className="field"><span>Whom to pay *</span>
         <input name="payee" required maxLength={100} value={payee} onChange={(e) => setPayee(e.target.value)} placeholder="Shop or person to be paid" />
@@ -140,7 +153,10 @@ function BillFlow({ token, project, onDone }: { token: string; project: string; 
       </label>
       <ContactFields />
       {err && <p className="error">{err}</p>}
-      <button className="btn primary block" disabled={busy || reading}>{busy ? 'Sending…' : 'Send bill & raise payment request'}</button>
+      <div className="gcta">
+        <button className="btn primary" disabled={busy || reading}>{busy ? 'Sending…' : 'Send bill →'}</button>
+        <small>A payment request is raised for the team.</small>
+      </div>
     </form>
   );
 }
@@ -161,12 +177,11 @@ function PayFlow({ token, project, onDone }: { token: string; project: string; o
   };
 
   return (
-    <form ref={form} onSubmit={submit} className="pay-form">
-      <h2>Request a payment</h2>
+    <form ref={form} onSubmit={submit} className="pay-form gform">
       <PayRequestBasics />
       <ContactFields prefix="requester" />
       {err && <p className="error">{err}</p>}
-      <button className="btn primary block" disabled={busy}>{busy ? 'Sending…' : 'Submit payment request'}</button>
+      <div className="gcta"><button className="btn primary" disabled={busy}>{busy ? 'Sending…' : 'Send payment request →'}</button></div>
     </form>
   );
 }

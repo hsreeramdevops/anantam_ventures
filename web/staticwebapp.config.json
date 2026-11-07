@@ -42,13 +42,20 @@
         "Content-Security-Policy": "frame-ancestors 'self'",
         "Cache-Control": "private, max-age=3600"
       }
+    },
+    {
+      "route": "/fonts/*",
+      "headers": {
+        "Cache-Control": "public, max-age=604800"
+      }
     }
   ],
   "navigationFallback": {
     "rewrite": "/index.html",
     "exclude": [
       "/api/*",
-      "/assets/*"
+      "/assets/*",
+      "/fonts/*"
     ]
   },
   "platform": {

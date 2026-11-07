@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { downloadCsv, money } from '../format';
+import { PageHead } from '../components/fw';
 
 interface StockRow { id: string; name: string; unit: string; inQty: number; outQty: number; stock: number; avgRate: number | null; reorderLevel: number | null; low: boolean }
 interface WageRow { id: string; name: string; trade: string; dailyWage: number; days: number; otHours: number; gross: number; advance: number; net: number }
@@ -11,11 +12,10 @@ export function StockReport() {
   useEffect(() => { api.get<{ items: StockRow[] }>('/api/reports/stock').then((r) => setRows(r.items)).catch((x) => setErr(x.message)); }, []);
   return (
     <section>
-      <div className="page-head">
-        <h1>Material stock</h1>
+      <PageHead title="Material stock" sheet="Stock">
         <button className="btn ghost" onClick={() => downloadCsv('stock.csv', ['Material', 'Unit', 'In', 'Out', 'Stock', 'Avg rate', 'Reorder level'],
           rows.map((r) => [r.name, r.unit, r.inQty, r.outQty, r.stock, r.avgRate, r.reorderLevel]))}>Export CSV</button>
-      </div>
+      </PageHead>
       {err && <p className="error">{err}</p>}
       <div className="table-wrap"><table>
         <thead><tr><th>Material</th><th>Unit</th><th className="num">In</th><th className="num">Out</th><th className="num">Stock</th><th className="num">Avg rate</th><th className="num">Reorder at</th></tr></thead>
@@ -43,14 +43,13 @@ export function WagesReport() {
   const total = rows.reduce((s, r) => s + r.net, 0);
   return (
     <section>
-      <div className="page-head">
-        <h1>Labour wages</h1>
+      <PageHead title="Labour wages" sheet="Wages">
         <div className="row">
           <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
           <button className="btn ghost" onClick={() => downloadCsv(`wages-${month}.csv`, ['Name', 'Trade', 'Daily wage', 'Days', 'OT hrs', 'Gross', 'Advance', 'Net payable'],
             rows.map((r) => [r.name, r.trade, r.dailyWage, r.days, r.otHours, r.gross, r.advance, r.net]))}>Export CSV</button>
         </div>
-      </div>
+      </PageHead>
       {err && <p className="error">{err}</p>}
       <p className="small muted">Full day = 1, half day = 0.5. Overtime paid at daily wage ÷ 8 per hour. Net payable: <b>{money(total)}</b></p>
       <div className="table-wrap"><table>

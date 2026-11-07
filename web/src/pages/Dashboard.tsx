@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { fmtDate, money } from '../format';
+import { PageHead } from '../components/fw';
 
 interface Named { name: string; value: number }
 interface Dash {
@@ -56,11 +57,11 @@ export default function Dashboard() {
 
   return (
     <section>
-      <h1>Dashboard</h1>
+      <PageHead title="Dashboard" sheet="Dashboard" />
       <div className="kpis">
         {kpis.map(([label, value, to, alert]) => (
-          <Link key={label} to={to ?? '/'} className={`card kpi ${alert ? 'alert' : ''}`}>
-            <span className="muted small">{label}</span>
+          <Link key={label} to={to ?? '/'} className={`kpi ${alert ? 'alert' : ''}`}>
+            <span className="lbl">{label}</span>
             <strong>{value}</strong>
           </Link>
         ))}
@@ -90,7 +91,7 @@ export default function Dashboard() {
         </div>
         <div className="card">
           <h3>Bills due in 7 days / overdue</h3>
-          {!d.dueSoon.length ? <p className="muted small">Nothing due 🎉</p> : (
+          {!d.dueSoon.length ? <p className="muted small">Nothing due.</p> : (
             <ul className="list">{d.dueSoon.map((b) => (
               <li key={b.id}><span>{fmtDate(b.dueDate)} · {b.vendorName ?? '—'}{b.billNumber ? ` #${b.billNumber}` : ''}</span><b>{money(b.outstanding)}</b></li>
             ))}</ul>

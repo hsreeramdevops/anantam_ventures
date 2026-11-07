@@ -4,6 +4,7 @@ import { api } from '../api';
 import { fmtDate } from '../format';
 import { useProject } from '../project';
 import { Doc, Project } from '../types';
+import { caseClass, PageHead } from '../components/fw';
 
 export const guestLink = (p: Project) => `${window.location.origin}/u/${p.shareToken}`;
 
@@ -17,10 +18,9 @@ export default function Projects() {
 
   return (
     <section>
-      <div className="page-head">
-        <h1>Projects</h1>
+      <PageHead title="Projects" sheet="Projects">
         {canManage && <button className="btn primary" onClick={() => setEditing({ status: 'Active', members: [] })}>+ New project</button>}
-      </div>
+      </PageHead>
       {loading && <p className="muted">Loading…</p>}
       {!loading && !projects.length && (
         <p className="muted">{canManage ? 'No projects yet. Create your first project.' : 'You have not been added to any project yet. Ask an admin to add you.'}</p>
@@ -30,12 +30,12 @@ export default function Projects() {
           <div key={p.id} className={`card project-card ${current?.id === p.id ? 'selected' : ''}`}>
             <div className="row between project-card-head" role="button" tabIndex={0} title={`Open ${p.name}`}
               onClick={() => open(p)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(p); } }}>
-              <strong>{p.name}</strong>
+              <strong className={caseClass(p.name)}>{p.name}</strong>
               <span className={`pill ${String(p.status ?? '').replace(/\s/g, '-').toLowerCase()}`}>{p.status}</span>
             </div>
             {p.location && <div className="muted small">{p.location}</div>}
             {p.startDate && <div className="muted small">Started {fmtDate(p.startDate)}</div>}
-            <button className={`btn open-project ${current?.id === p.id ? 'current' : 'primary'}`} onClick={() => open(p)}>
+            <button className={`btn open-project ${current?.id === p.id ? 'current' : 'dark'}`} onClick={() => open(p)}>
               {current?.id === p.id ? '✓ Current project · Open' : 'Open project →'}
             </button>
             {canManage && <ShareLink project={p} onChange={reload} />}
@@ -67,7 +67,7 @@ function ShareLink({ project, onChange }: { project: Project; onChange: () => vo
   };
   return (
     <div className="share-box">
-      <div className="small"><b>{l.title}</b> {on ? <span className="pill paid">On</span> : <span className="pill unpaid">Off</span>}</div>
+      <div className="small"><b>{l.title}</b> {on ? <span className="tag ok">✓ On</span> : <span className="tag u">Off</span>}</div>
       {on && <input className="share-url" readOnly value={l.url(project)} onFocus={(e) => e.target.select()} />}
       <div className="row wrap">
         {on && <button className="btn small" onClick={copy}>Copy link</button>}
